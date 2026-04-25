@@ -1,0 +1,76 @@
+*codex-workbench.nvim*      Review-first Codex client for Neovim
+
+==============================================================================
+CONTENTS                                           *codex-workbench-contents*
+
+1. Overview     |codex-workbench-overview|
+2. Commands     |codex-workbench-commands|
+3. Options      |codex-workbench-options|
+
+==============================================================================
+OVERVIEW                                           *codex-workbench-overview*
+
+codex-workbench.nvim runs Codex in a shadow git worktree. Codex edits are kept
+out of the real worktree until the user accepts review patches from Neovim.
+
+The runtime has no required Lua plugin dependencies. A Rust bridge handles
+Codex app-server JSONL, shadow worktree sync, patch generation, and apply.
+
+==============================================================================
+COMMANDS                                           *codex-workbench-commands*
+
+:CodexWorkbenchOpen
+  Start the bridge and open the output pane.
+
+:CodexWorkbenchAsk [prompt]
+  Send a prompt. Without [prompt], opens vim.ui.input().
+
+:CodexWorkbenchReview
+  Open the pending review queue.
+
+:CodexWorkbenchAccept [scope]
+  Apply the pending review to the real workspace. Scope defaults to "all".
+  Supported scope forms: all, file:path, hunk:path:index.
+
+:CodexWorkbenchReject [scope]
+  Reject the pending review scope. Scope defaults to "all".
+
+:CodexWorkbenchResume [thread_id]
+  Resume the stored thread or the provided thread id.
+
+:CodexWorkbenchFork
+  Fork the current Codex thread.
+
+:CodexWorkbenchStatus
+  Print bridge status.
+
+:CodexWorkbenchHealth
+  Run health checks.
+
+:CodexWorkbenchInstallBinary
+  Print the install script path for the Rust bridge binary.
+
+==============================================================================
+OPTIONS                                            *codex-workbench-options*
+
+>
+require("codex_workbench").setup({
+  codex_cmd = "codex",
+  binary = { auto_install = false },
+  ui = {
+    output = { position = "right", size = 40 },
+    review = { layout = "vertical" },
+  },
+  session = { auto_resume = true },
+  shadow = {
+    root = vim.fn.stdpath("state") .. "/codex-workbench/shadows",
+    max_untracked_file_bytes = 5242880,
+    max_untracked_total_bytes = 52428800,
+  },
+  keymaps = {},
+  statusline = { enabled = true },
+})
+<
+
+vim:tw=78:ts=8:noet:ft=help:norl:
+
