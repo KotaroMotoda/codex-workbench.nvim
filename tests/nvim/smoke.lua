@@ -1,6 +1,51 @@
 vim.opt.rtp:prepend(vim.fn.getcwd())
 require("codex_workbench").setup({ session = { auto_resume = false } })
 
+-- Verify the error-code translation table covers every variant the Rust
+-- bridge can emit. Drift between the Rust enum and this Lua mapping would
+-- cause unlocalized fallbacks, so we treat missing entries as a hard failure.
+do
+  local error_codes = require("codex_workbench.error_codes")
+  local expected = {
+    "not_initialized",
+    "invalid_request",
+    "unknown_method",
+    "not_a_git_repository",
+    "git_failed",
+    "patch_apply_failed",
+    "scope_invalid",
+    "scope_file_not_found",
+    "scope_hunk_not_found",
+    "no_pending_review",
+    "review_pending",
+    "real_workspace_changed",
+    "app_server_crashed",
+    "app_server_error",
+    "turn_failed",
+    "no_thread",
+    "io_error",
+    "internal_error",
+  }
+  for _, code in ipairs(expected) do
+    assert(
+      type(error_codes.messages[code]) == "string",
+      "error_codes.messages missing entry for " .. code
+    )
+  end
+
+  local localized = error_codes.format({ ok = false, error_code = "patch_apply_failed", error = "raw" })
+  assert(
+    localized == error_codes.messages.patch_apply_failed,
+    "error_codes.format should prefer the localized message for known codes"
+  )
+
+  local fallback = error_codes.format({ ok = false, error = "raw fallback" })
+  assert(fallback == "raw fallback", "error_codes.format should fall back to the raw message")
+
+  local truncated = error_codes.format({ ok = false, error = string.rep("x", 500) })
+  assert(#truncated <= 205, "error_codes.format should bound fallback length")
+end
+
 for _, command in ipairs({
   "CodexWorkbenchOpen",
   "CodexWorkbenchAsk",
