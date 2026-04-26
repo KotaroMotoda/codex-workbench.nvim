@@ -103,7 +103,15 @@ impl GitRepo {
     }
 
     pub fn diff_tree_to_worktree(&self, tree: &str) -> Result<String> {
-        git_output(["diff", tree, "--binary", "--full-index"], &self.root, None)
+        git_success(["add", "-A"], &self.root, None)?;
+        let diff = git_output(
+            ["diff", "--cached", tree, "--binary", "--full-index"],
+            &self.root,
+            None,
+        );
+        let reset = git_success(["reset", "--mixed"], &self.root, None);
+        reset?;
+        diff
     }
 
     pub fn fingerprint(&self, max_file_bytes: u64, max_total_bytes: u64) -> Result<String> {

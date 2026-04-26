@@ -7,12 +7,14 @@ for _, command in ipairs({
   "CodexWorkbenchReview",
   "CodexWorkbenchAccept",
   "CodexWorkbenchReject",
+  "CodexWorkbenchAbandon",
   "CodexWorkbenchResume",
   "CodexWorkbenchFork",
   "CodexWorkbenchStatus",
+  "CodexWorkbenchToggleDetails",
+  "CodexWorkbenchLogs",
   "CodexWorkbenchHealth",
   "CodexWorkbenchInstallBinary",
 }) do
   assert(vim.api.nvim_get_commands({})[command], command .. " was not registered")
 end
-

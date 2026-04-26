@@ -35,6 +35,8 @@ Then use:
 ```
 
 Scope forms for accept/reject are `all`, `file:path`, and `hunk:path:index`.
+In the review buffer, `a/r` accepts or rejects all, `A/R` works on the file
+under the cursor, and `h/x` works on the hunk under the cursor.
 
 ## Design
 
@@ -43,5 +45,22 @@ Scope forms for accept/reject are `all`, `file:path`, and `hunk:path:index`.
   is no pending review.
 - Final review patches are generated from the shadow worktree after a turn
   completes.
+- New files created by Codex in shadow are included in the final review patch.
 - Binary, rename, mode, symlink, and submodule-like changes are treated as
   file-level review items.
+
+## Commands
+
+- `:CodexWorkbenchOpen`
+- `:CodexWorkbenchAsk [prompt]`
+- `:CodexWorkbenchReview`
+- `:CodexWorkbenchAccept [scope]`
+- `:CodexWorkbenchReject [scope]`
+- `:CodexWorkbenchAbandon`
+- `:CodexWorkbenchResume [thread_id]`
+- `:CodexWorkbenchFork`
+- `:CodexWorkbenchStatus`
+- `:CodexWorkbenchToggleDetails`
+- `:CodexWorkbenchLogs`
+- `:CodexWorkbenchHealth`
+- `:CodexWorkbenchInstallBinary`

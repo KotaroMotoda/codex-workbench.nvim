@@ -1,7 +1,10 @@
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use anyhow::{anyhow, Context, Result};
 use codex_workbench_protocol::{ApprovalResponseParams, BridgeEvent, BridgeRequest};
@@ -13,6 +16,7 @@ pub struct AppServerClient {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    stderr_tail: Arc<Mutex<VecDeque<String>>>,
     next_id: u64,
     thread_id: Option<String>,
 }
@@ -23,7 +27,7 @@ impl AppServerClient {
             .args(["app-server", "--listen", "stdio://"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("failed to spawn `{codex_cmd} app-server`"))?;
 
@@ -32,10 +36,15 @@ impl AppServerClient {
             .stdout
             .take()
             .context("app-server stdout unavailable")?;
+        let stderr_tail = Arc::new(Mutex::new(VecDeque::with_capacity(50)));
+        if let Some(stderr) = child.stderr.take() {
+            drain_stderr(stderr, Arc::clone(&stderr_tail));
+        }
         let mut this = Self {
             child,
             stdin,
             stdout: BufReader::new(stdout),
+            stderr_tail,
             next_id: 1,
             thread_id: None,
         };
@@ -135,33 +144,28 @@ impl AppServerClient {
                 }
                 sink.emit(BridgeEvent::new(
                     "appserver_response",
-                    json!({ "id": response_id, "message": message }),
+                    json!({ "id": response_id, "summary": summarize_json(&message, 1200) }),
                 ));
                 continue;
             }
 
             if let Some(method) = message.get("method").and_then(Value::as_str) {
-                let params = message.get("params").cloned().unwrap_or(Value::Null);
-                sink.emit(BridgeEvent::new(
-                    "appserver_event",
-                    json!({ "method": method, "params": params }),
-                ));
-
-                if method == "item/agentMessage/delta" {
-                    if let Some(delta) = find_string(&message, &["delta", "text"]) {
-                        sink.emit(BridgeEvent::new("output_delta", json!({ "text": delta })));
-                    }
-                }
-
-                if method == "turn/diff/updated" {
-                    if let Some(diff) = find_string(&message, &["diff"]) {
-                        sink.emit(BridgeEvent::new("diff_preview", json!({ "diff": diff })));
-                    }
-                }
+                self.emit_notification(method, &message, sink);
 
                 if method == "turn/completed" {
                     let completed_turn = extract_turn_id(&message).unwrap_or_default();
                     if completed_turn.is_empty() || completed_turn == turn_id {
+                        if let Some(error) = turn_error_message(&message) {
+                            sink.emit(BridgeEvent::new(
+                                "turn_error",
+                                json!({ "turn_id": turn_id, "message": error }),
+                            ));
+                            return Err(anyhow!("Codex turn failed: {error}"));
+                        }
+                        sink.emit(BridgeEvent::new(
+                            "turn_completed",
+                            json!({ "turn_id": turn_id }),
+                        ));
                         return Ok(turn_id);
                     }
                 }
@@ -213,9 +217,14 @@ impl AppServerClient {
         let mut line = String::new();
         let read = self.stdout.read_line(&mut line)?;
         if read == 0 {
-            return Err(anyhow!("app-server closed stdout"));
+            return Err(anyhow!("app-server closed stdout{}", self.stderr_suffix()));
         }
-        Ok(serde_json::from_str(line.trim_end())?)
+        serde_json::from_str(line.trim_end()).with_context(|| {
+            format!(
+                "app-server emitted invalid JSON: {}",
+                truncate(line.trim_end(), 300)
+            )
+        })
     }
 
     fn read_until_response_no_approval(&mut self, id: u64) -> Result<Value> {
@@ -245,10 +254,7 @@ impl AppServerClient {
                 continue;
             }
             if let Some(method) = message.get("method").and_then(Value::as_str) {
-                sink.emit(BridgeEvent::new(
-                    "appserver_event",
-                    json!({ "method": method, "params": message.get("params").cloned().unwrap_or(Value::Null) }),
-                ));
+                self.emit_notification(method, &message, sink);
             }
         }
     }
@@ -276,7 +282,7 @@ impl AppServerClient {
             json!({
                 "approval_id": approval_id,
                 "method": method,
-                "params": params
+                "summary": summarize_json(&params, 1200)
             }),
         ));
 
@@ -285,6 +291,69 @@ impl AppServerClient {
             "id": app_id,
             "result": { "decision": decision }
         }))
+    }
+
+    fn emit_notification(&self, method: &str, message: &Value, sink: &mut dyn EventSink) {
+        sink.emit(BridgeEvent::new(
+            "appserver_event",
+            json!({ "method": method, "summary": summarize_notification(method, message) }),
+        ));
+
+        match method {
+            "thread/started" => {
+                if let Some(thread_id) = extract_thread_id(message) {
+                    sink.emit(BridgeEvent::new(
+                        "thread_started",
+                        json!({ "thread_id": thread_id }),
+                    ));
+                }
+            }
+            "turn/started" => {
+                if let Some(turn_id) = extract_turn_id(message) {
+                    sink.emit(BridgeEvent::new(
+                        "turn_started",
+                        json!({ "turn_id": turn_id }),
+                    ));
+                }
+            }
+            "item/agentMessage/delta" => {
+                if let Some(delta) = message.pointer("/params/delta").and_then(Value::as_str) {
+                    sink.emit(BridgeEvent::new("output_delta", json!({ "text": delta })));
+                }
+            }
+            "item/completed" => {
+                if let Some(text) = agent_message_text(message) {
+                    sink.emit(BridgeEvent::new(
+                        "message_completed",
+                        json!({ "text": text }),
+                    ));
+                }
+            }
+            "turn/diff/updated" => {
+                if let Some(diff) = message.pointer("/params/diff").and_then(Value::as_str) {
+                    sink.emit(BridgeEvent::new("diff_preview", json!({ "diff": diff })));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn stderr_suffix(&mut self) -> String {
+        let status = self.child.try_wait().ok().flatten();
+        let tail = self
+            .stderr_tail
+            .lock()
+            .ok()
+            .map(|tail| tail.iter().cloned().collect::<Vec<_>>().join("\n"))
+            .unwrap_or_default();
+        match (status, tail.is_empty()) {
+            (Some(status), false) => {
+                format!(" (status: {status}; stderr: {})", truncate(&tail, 1200))
+            }
+            (Some(status), true) => format!(" (status: {status})"),
+            (None, false) => format!(" (stderr: {})", truncate(&tail, 1200)),
+            (None, true) => String::new(),
+        }
     }
 }
 
@@ -314,7 +383,7 @@ fn wait_for_approval(rx: &Receiver<BridgeRequest>, approval_id: &str) -> Result<
 
 fn response_result(message: Value) -> Result<Value> {
     if let Some(error) = message.get("error") {
-        return Err(anyhow!("app-server error: {error}"));
+        return Err(anyhow!("app-server error: {}", summarize_json(error, 1200)));
     }
     Ok(message.get("result").cloned().unwrap_or(Value::Null))
 }
@@ -329,6 +398,101 @@ fn extract_turn_id(value: &Value) -> Option<String> {
     find_key(value, "turn")
         .and_then(|turn| find_string(turn, &["id", "turnId"]))
         .or_else(|| find_string(value, &["turnId"]))
+}
+
+fn agent_message_text(value: &Value) -> Option<String> {
+    let item = value.pointer("/params/item")?;
+    let item_type = item.get("type").and_then(Value::as_str)?;
+    if item_type != "agentMessage" {
+        return None;
+    }
+    item.get("text")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| find_string(item, &["text"]))
+}
+
+fn turn_error_message(value: &Value) -> Option<String> {
+    let turn = value
+        .pointer("/params/turn")
+        .or_else(|| value.get("turn"))?;
+    let error = turn.get("error")?;
+    Some(summarize_json(error, 1200))
+}
+
+fn summarize_notification(method: &str, message: &Value) -> Value {
+    let params = message.get("params").unwrap_or(&Value::Null);
+    let thread_id = params.get("threadId").and_then(Value::as_str);
+    let turn_id = params.get("turnId").and_then(Value::as_str);
+    match method {
+        "item/completed" | "item/started" => {
+            let item = params.get("item").unwrap_or(&Value::Null);
+            json!({
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "item_id": item.get("id").and_then(Value::as_str),
+                "item_type": item.get("type").and_then(Value::as_str),
+                "status": item.get("status").and_then(Value::as_str),
+                "error": item.get("error").map(|error| summarize_json(error, 500)),
+            })
+        }
+        "item/agentMessage/delta" => json!({
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "item_id": params.get("itemId").and_then(Value::as_str),
+            "delta_bytes": params.get("delta").and_then(Value::as_str).map(str::len),
+        }),
+        "turn/diff/updated" => json!({
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+            "diff_bytes": params.get("diff").and_then(Value::as_str).map(str::len),
+        }),
+        "turn/completed" | "turn/started" => {
+            let turn = params.get("turn").unwrap_or(&Value::Null);
+            json!({
+                "thread_id": thread_id,
+                "turn_id": turn.get("id").and_then(Value::as_str).or(turn_id),
+                "status": turn.get("status").and_then(Value::as_str),
+                "error": turn.get("error").map(|error| summarize_json(error, 500)),
+            })
+        }
+        "thread/started" => json!({
+            "thread_id": extract_thread_id(message),
+        }),
+        _ => json!({
+            "thread_id": thread_id,
+            "turn_id": turn_id,
+        }),
+    }
+}
+
+fn summarize_json(value: &Value, max_chars: usize) -> String {
+    truncate(&value.to_string(), max_chars)
+}
+
+fn truncate(text: &str, max_chars: usize) -> String {
+    let mut out = String::with_capacity(max_chars.min(text.len()));
+    for (idx, ch) in text.chars().enumerate() {
+        if idx >= max_chars {
+            out.push('…');
+            return out;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn drain_stderr(stderr: std::process::ChildStderr, tail: Arc<Mutex<VecDeque<String>>>) {
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(|line| line.ok()) {
+            if let Ok(mut tail) = tail.lock() {
+                if tail.len() >= 50 {
+                    tail.pop_front();
+                }
+                tail.push_back(line);
+            }
+        }
+    });
 }
 
 fn find_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
@@ -363,5 +527,42 @@ fn approval_id(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_summary_does_not_leak_user_message_text() {
+        let message = json!({
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread",
+                "turnId": "turn",
+                "item": {
+                    "id": "item",
+                    "type": "userMessage",
+                    "text": "secret prompt text that must not be displayed"
+                }
+            }
+        });
+
+        let summary = summarize_notification("item/completed", &message).to_string();
+        assert!(summary.contains("userMessage"));
+        assert!(!summary.contains("secret prompt text"));
+    }
+
+    #[test]
+    fn agent_message_text_only_accepts_agent_message_items() {
+        let user = json!({
+            "params": { "item": { "type": "userMessage", "text": "user text" } }
+        });
+        let agent = json!({
+            "params": { "item": { "type": "agentMessage", "text": "agent text" } }
+        });
+        assert_eq!(agent_message_text(&user), None);
+        assert_eq!(agent_message_text(&agent).as_deref(), Some("agent text"));
     }
 }
