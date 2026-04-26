@@ -35,10 +35,13 @@ local function trim_message(text, limit)
   if type(text) ~= "string" then
     return nil
   end
-  if #text <= limit then
+  -- Use vim.fn.strcharlen / vim.fn.strcharpart for correct UTF-8 character
+  -- counting. Bridge error messages are mostly ASCII but may include file
+  -- paths or remote error text that contains non-ASCII characters.
+  if vim.fn.strcharlen(text) <= limit then
     return text
   end
-  return text:sub(1, limit) .. "…"
+  return vim.fn.strcharpart(text, 0, limit) .. "…"
 end
 
 --- Render a user-facing message for a bridge response or raw error string.
