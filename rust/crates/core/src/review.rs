@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
 use anyhow::{anyhow, Result};
-use codex_workbench_protocol::BridgeError;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReviewFile {
@@ -58,27 +57,20 @@ pub fn patch_for_scope(patch: &str, scope: &str) -> Result<String> {
     }
 
     if let Some(path) = scope.strip_prefix("file:") {
-        return file_patch(patch, path).ok_or_else(|| {
-            anyhow!(BridgeError::ScopeFileNotFound {
-                path: path.to_string(),
-            })
-        });
+        return file_patch(patch, path)
+            .ok_or_else(|| anyhow!("file is not present in review patch: {path}"));
     }
 
     if let Some(rest) = scope.strip_prefix("hunk:") {
-        let (path, idx) = parse_hunk_scope(scope, rest)?;
-        return hunk_patch(patch, path, idx).ok_or_else(|| {
-            anyhow!(BridgeError::ScopeHunkNotFound {
-                path: path.to_string(),
-                index: idx,
-            })
-        });
+        let (path, idx) = rest
+            .rsplit_once(':')
+            .ok_or_else(|| anyhow!("hunk scope must be hunk:<path>:<index>"))?;
+        let idx = idx.parse::<usize>()?;
+        return hunk_patch(patch, path, idx)
+            .ok_or_else(|| anyhow!("hunk is not present in review patch: {path}:{idx}"));
     }
 
-    Err(anyhow!(BridgeError::ScopeInvalid {
-        scope: scope.to_string(),
-        reason: "expected one of: all, file:<path>, hunk:<path>:<index>".to_string(),
-    }))
+    Err(anyhow!("unsupported review scope: {scope}"))
 }
 
 pub fn remaining_after_scope(patch: &str, scope: &str) -> Result<String> {
@@ -91,35 +83,15 @@ pub fn remaining_after_scope(patch: &str, scope: &str) -> Result<String> {
     }
 
     if let Some(rest) = scope.strip_prefix("hunk:") {
-        let (path, idx) = parse_hunk_scope(scope, rest)?;
-        return remove_hunk_patch(patch, path, idx).ok_or_else(|| {
-            anyhow!(BridgeError::ScopeHunkNotFound {
-                path: path.to_string(),
-                index: idx,
-            })
-        });
+        let (path, idx) = rest
+            .rsplit_once(':')
+            .ok_or_else(|| anyhow!("hunk scope must be hunk:<path>:<index>"))?;
+        let idx = idx.parse::<usize>()?;
+        return remove_hunk_patch(patch, path, idx)
+            .ok_or_else(|| anyhow!("hunk is not present in review patch: {path}:{idx}"));
     }
 
-    Err(anyhow!(BridgeError::ScopeInvalid {
-        scope: scope.to_string(),
-        reason: "expected one of: all, file:<path>, hunk:<path>:<index>".to_string(),
-    }))
-}
-
-fn parse_hunk_scope<'a>(scope: &str, rest: &'a str) -> Result<(&'a str, usize)> {
-    let (path, idx) = rest.rsplit_once(':').ok_or_else(|| {
-        anyhow!(BridgeError::ScopeInvalid {
-            scope: scope.to_string(),
-            reason: "hunk scope must be hunk:<path>:<index>".to_string(),
-        })
-    })?;
-    let idx = idx.parse::<usize>().map_err(|_| {
-        anyhow!(BridgeError::ScopeInvalid {
-            scope: scope.to_string(),
-            reason: "hunk index must be a non-negative integer".to_string(),
-        })
-    })?;
-    Ok((path, idx))
+    Err(anyhow!("unsupported review scope: {scope}"))
 }
 
 fn file_patch(patch: &str, path: &str) -> Option<String> {

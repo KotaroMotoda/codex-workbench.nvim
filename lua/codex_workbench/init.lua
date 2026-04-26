@@ -14,28 +14,16 @@ function M.ask(prompt)
   local bridge = require("codex_workbench.bridge")
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
-  local log = require("codex_workbench.log")
-  local error_codes = require("codex_workbench.error_codes")
-
-  local function report(response)
-    log.write("ERROR", "bridge_error", response)
-    vim.notify(
-      error_codes.format(response) .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
-  end
-
   output.open()
   output.start_turn()
   bridge.initialize(M.opts, function(init_response)
     if not init_response.ok then
-      report(init_response)
+      vim.notify(init_response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
       return
     end
     bridge.request("ask", { prompt = context.resolve(prompt or "", M.opts) }, function(response)
       if not response.ok then
-        report(response)
+        vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
       end
     end)
   end)

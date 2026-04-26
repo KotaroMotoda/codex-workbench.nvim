@@ -2,7 +2,6 @@ local output = require("codex_workbench.ui.output")
 local review = require("codex_workbench.ui.review")
 local approval = require("codex_workbench.ui.approval")
 local log = require("codex_workbench.log")
-local error_codes = require("codex_workbench.error_codes")
 
 local M = {
   job_id = nil,
@@ -44,28 +43,11 @@ local function executable(opts)
   return "codex-workbench-bridge"
 end
 
---- Notify the user about a fatal bridge condition. Accepts either a structured
---- bridge response, a `{ code, message, details }` event payload, or a plain
---- string. The full payload is always written to the log; the popup only ever
---- shows the localized one-liner so we never leak large stderr blobs.
-local function notify_error(payload)
-  log.write("ERROR", "bridge_error", payload)
-  local message = error_codes.format(payload)
+local function notify_error(message)
+  log.write("ERROR", message)
   vim.schedule(function()
-    vim.notify(
-      message .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
+    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
   end)
-end
-
---- Lighter-weight log write for non-fatal bridge output (stderr lines, etc.).
-local function log_warn(message)
-  if message == nil or message == "" then
-    return
-  end
-  log.write("WARN", "bridge_stderr", message)
 end
 
 local function handle_event(message)
@@ -117,7 +99,7 @@ local function handle_event(message)
     log.write("ERROR", "turn_error", message)
     output.show_error(message.message or "Codex turn failed")
   elseif message.event == "error" then
-    notify_error(message)
+    notify_error(message.message or "unknown bridge error")
   end
 end
 
@@ -127,8 +109,8 @@ local function handle_message(line)
   end
   local ok, message = pcall(vim.json.decode, line)
   if not ok then
-    log.write("ERROR", "invalid_bridge_json", line)
-    notify_error({ code = "internal_error" })
+    log.write("ERROR", "invalid bridge JSON", line)
+    notify_error("bridge returned invalid JSON")
     return
   end
 
@@ -179,11 +161,11 @@ local function on_stdout(_, data)
 end
 
 local function on_stderr(_, data)
-  -- The Rust bridge only uses stderr for diagnostic logging. We surface those
-  -- lines in the workbench log so users can find them when debugging, but we
-  -- never promote them to a notification: that path used to flood the user
-  -- with raw error fragments and leak internal payloads.
-  M.stderr_pending = consume_lines(data, M.stderr_pending, log_warn)
+  M.stderr_pending = consume_lines(data, M.stderr_pending, function(line)
+    if line ~= "" then
+      notify_error(line)
+    end
+  end)
 end
 
 function M.start(opts)
@@ -198,8 +180,7 @@ function M.start(opts)
     if result.code == 0 then
       bin = vim.trim(result.stdout or "")
     else
-      log.write("ERROR", "binary_install_failed", result.stderr or "")
-      notify_error({ code = "internal_error" })
+      notify_error(result.stderr ~= "" and result.stderr or "binary install failed")
       return false
     end
   end
@@ -216,7 +197,7 @@ function M.start(opts)
         M.stdout_pending = ""
       end
       if M.stderr_pending ~= "" then
-        log_warn(M.stderr_pending)
+        notify_error(M.stderr_pending)
         M.stderr_pending = ""
       end
       M.job_id = nil
@@ -224,14 +205,13 @@ function M.start(opts)
       M.state.initialized = false
       M.state.phase = "idle"
       if code ~= 0 and code ~= 130 and code ~= 143 then
-        notify_error({ code = "app_server_crashed", details = { exit_code = code } })
+        notify_error("bridge exited with code " .. tostring(code))
       end
     end,
   })
 
   if M.job_id <= 0 then
-    log.write("ERROR", "bridge_start_failed", { binary = bin })
-    notify_error({ code = "app_server_crashed" })
+    notify_error("failed to start bridge: " .. bin)
     return false
   end
 
@@ -254,7 +234,7 @@ function M.initialize(opts, callback)
 
   callback = callback or function(response)
     if not response.ok then
-      notify_error(response)
+      notify_error(response.error or "bridge initialization failed")
     end
   end
 
@@ -292,7 +272,7 @@ end
 
 function M.request(method, params, callback)
   if not M.job_id then
-    notify_error({ code = "not_initialized" })
+    notify_error("bridge is not running")
     return
   end
 

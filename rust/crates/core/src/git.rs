@@ -1,56 +1,10 @@
 use std::ffi::{OsStr, OsString};
-use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{anyhow, Context, Result};
-use codex_workbench_protocol::BridgeError;
 use sha2::{Digest, Sha256};
-
-/// Error returned when a `git` invocation exits with a non-zero status. We
-/// keep the full stderr in `stderr` so that callers can decide how to log it
-/// and a separately truncated `stderr_tail` for promotion to user-facing
-/// `BridgeError::GitFailed`.
-#[derive(Debug, Clone)]
-pub struct GitInvocationError {
-    pub command: String,
-    pub stderr: String,
-    pub stderr_tail: String,
-}
-
-impl GitInvocationError {
-    fn new(command: String, stderr: String) -> Self {
-        let stderr_tail = truncate_for_display(&stderr, 800);
-        Self {
-            command,
-            stderr,
-            stderr_tail,
-        }
-    }
-}
-
-impl fmt::Display for GitInvocationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "git {} failed: {}", self.command, self.stderr_tail)
-    }
-}
-
-impl std::error::Error for GitInvocationError {}
-
-fn truncate_for_display(text: &str, max_chars: usize) -> String {
-    let trimmed = text.trim();
-    // Single pass: avoids the O(n) `chars().count()` pre-scan.
-    let mut out = String::with_capacity(max_chars.min(trimmed.len()));
-    for (idx, ch) in trimmed.chars().enumerate() {
-        if idx >= max_chars {
-            out.push('…');
-            return out;
-        }
-        out.push(ch);
-    }
-    out
-}
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
@@ -65,23 +19,10 @@ pub struct UntrackedCopyWarning {
 
 impl GitRepo {
     pub fn discover(workspace: impl AsRef<Path>) -> Result<Self> {
-        let workspace = workspace.as_ref();
-        let output = git_output(["rev-parse", "--show-toplevel"], workspace, None).map_err(
-            |error| {
-                if error.downcast_ref::<GitInvocationError>().is_some() {
-                    anyhow!(BridgeError::NotAGitRepository {
-                        workspace: workspace.to_string_lossy().to_string(),
-                    })
-                } else {
-                    error
-                }
-            },
-        )?;
+        let output = git_output(["rev-parse", "--show-toplevel"], workspace.as_ref(), None)?;
         let root = PathBuf::from(output.trim());
         if root.as_os_str().is_empty() {
-            return Err(anyhow!(BridgeError::NotAGitRepository {
-                workspace: workspace.to_string_lossy().to_string(),
-            }));
+            return Err(anyhow!("Git repository is required"));
         }
         Ok(Self { root })
     }
@@ -229,13 +170,6 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    // Use Peekable to read the first argument (subcommand) for the error
-    // descriptor without collecting the whole iterator into a Vec.
-    let mut args = args.into_iter().peekable();
-    let descriptor = args
-        .peek()
-        .map(|first| first.as_ref().to_string_lossy().into_owned())
-        .unwrap_or_else(|| "unknown".to_string());
     let mut command = Command::new("git");
     command.args(args).current_dir(cwd);
     if stdin.is_some() {
@@ -252,12 +186,11 @@ where
     }
     let output = child.wait_with_output()?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        return Err(GitInvocationError::new(descriptor, stderr).into());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("git failed: {stderr}"));
     }
     Ok(output.stdout)
 }
-
 
 pub fn git_success<I, S>(args: I, cwd: &Path, stdin: Option<&[u8]>) -> Result<()>
 where

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use anyhow::{anyhow, Context, Result};
-use codex_workbench_protocol::{ApprovalResponseParams, BridgeError, BridgeEvent, BridgeRequest};
+use codex_workbench_protocol::{ApprovalResponseParams, BridgeEvent, BridgeRequest};
 use serde_json::{json, Value};
 
 use crate::manager::EventSink;
@@ -174,10 +174,7 @@ impl AppServerClient {
                                 "turn_error",
                                 json!({ "turn_id": turn_id, "message": error }),
                             ));
-                            return Err(anyhow!(BridgeError::TurnFailed {
-                                turn_id: turn_id.clone(),
-                                message: error,
-                            }));
+                            return Err(anyhow!("Codex turn failed: {error}"));
                         }
                         sink.emit(BridgeEvent::new(
                             "turn_completed",
@@ -209,7 +206,6 @@ impl AppServerClient {
     fn request(&mut self, method: &str, params: Value) -> Result<Value> {
         let id = self.send_request(method, params)?;
         self.read_until_response_no_approval(id)
-            .map_err(|err| label_app_server_error(err, method))
     }
 
     fn send_request(&mut self, method: &str, params: Value) -> Result<u64> {
@@ -235,8 +231,7 @@ impl AppServerClient {
         let mut line = String::new();
         let read = self.stdout.read_line(&mut line)?;
         if read == 0 {
-            let stderr_tail = self.stderr_tail_text();
-            return Err(anyhow!(BridgeError::AppServerCrashed { stderr_tail }));
+            return Err(anyhow!("app-server closed stdout{}", self.stderr_suffix()));
         }
         serde_json::from_str(line.trim_end()).with_context(|| {
             format!(
@@ -357,7 +352,7 @@ impl AppServerClient {
         }
     }
 
-    fn stderr_tail_text(&mut self) -> String {
+    fn stderr_suffix(&mut self) -> String {
         let status = self.child.try_wait().ok().flatten();
         let tail = self
             .stderr_tail
@@ -365,11 +360,12 @@ impl AppServerClient {
             .ok()
             .map(|tail| tail.iter().cloned().collect::<Vec<_>>().join("\n"))
             .unwrap_or_default();
-        let trimmed = truncate(&tail, 800);
-        match (status, trimmed.is_empty()) {
-            (Some(status), false) => format!("status: {status}; stderr: {trimmed}"),
-            (Some(status), true) => format!("status: {status}"),
-            (None, false) => trimmed,
+        match (status, tail.is_empty()) {
+            (Some(status), false) => {
+                format!(" (status: {status}; stderr: {})", truncate(&tail, 1200))
+            }
+            (Some(status), true) => format!(" (status: {status})"),
+            (None, false) => format!(" (stderr: {})", truncate(&tail, 1200)),
             (None, true) => String::new(),
         }
     }
@@ -401,59 +397,9 @@ fn wait_for_approval(rx: &Receiver<BridgeRequest>, approval_id: &str) -> Result<
 
 fn response_result(message: Value) -> Result<Value> {
     if let Some(error) = message.get("error") {
-        let (code, message_text) = parse_remote_error(error);
-        return Err(anyhow!(BridgeError::AppServerError {
-            method: String::new(),
-            code,
-            message: message_text,
-        }));
+        return Err(anyhow!("app-server error: {}", summarize_json(error, 1200)));
     }
     Ok(message.get("result").cloned().unwrap_or(Value::Null))
-}
-
-/// Extract a short, structured `(code, message)` pair from an app-server
-/// error object. We intentionally avoid forwarding `data` or unknown nested
-/// fields so that secrets and large blobs do not bleed into user-facing
-/// notifications.
-fn parse_remote_error(error: &Value) -> (Option<i64>, String) {
-    let code = error.get("code").and_then(Value::as_i64);
-    let message = error
-        .get("message")
-        .and_then(Value::as_str)
-        .map(|s| truncate(s, 240))
-        .unwrap_or_else(|| match error {
-            Value::String(s) => truncate(s, 240),
-            _ => "unknown app-server error".to_string(),
-        });
-    (code, message)
-}
-
-/// Replace the empty `method` placeholder set by `response_result` with the
-/// real method name when we know it. Non-`AppServerError` causes pass through
-/// unchanged so that crashes etc. retain their classification.
-///
-/// # Note on error-chain loss
-/// When the method field is updated we construct a fresh `anyhow::Error`,
-/// which intentionally discards the original cause chain. The chain is not
-/// meaningful here — the bridge error payload is the only information we
-/// forward — and preserving it would require boxing the original error as a
-/// source, complicating `classify` at the outer boundary for no user benefit.
-fn label_app_server_error(err: anyhow::Error, method: &str) -> anyhow::Error {
-    if let Some(BridgeError::AppServerError {
-        method: existing,
-        code,
-        message,
-    }) = err.downcast_ref::<BridgeError>()
-    {
-        if existing.is_empty() {
-            return anyhow!(BridgeError::AppServerError {
-                method: method.to_string(),
-                code: *code,
-                message: message.clone(),
-            });
-        }
-    }
-    err
 }
 
 fn extract_thread_id(value: &Value) -> Option<String> {
@@ -488,8 +434,7 @@ fn turn_error_message(value: &Value) -> Option<String> {
     if error.is_null() {
         return None;
     }
-    let (_, message) = parse_remote_error(error);
-    Some(message)
+    Some(summarize_json(error, 1200))
 }
 
 fn summarize_notification(method: &str, message: &Value) -> Value {

@@ -1,18 +1,11 @@
 local M = {}
 local log = require("codex_workbench.log")
-local error_codes = require("codex_workbench.error_codes")
 
---- Reports a failed bridge response to the user. Always logs the full
---- structured payload so that the popup can stay short and code-driven.
 local function report_error(response)
   if response and not response.ok then
-    log.write("ERROR", "bridge_error", response)
-    local message = error_codes.format(response)
-    vim.notify(
-      message .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
+    local message = response.error or "request failed"
+    log.write("ERROR", message, response)
+    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
     return true
   end
   return false
@@ -172,22 +165,9 @@ function M.register(opts)
     vim.system({ root .. "/scripts/install_binary.sh" }, { text = true }, function(result)
       vim.schedule(function()
         if result.code == 0 then
-          vim.notify(
-            "Installed: " .. vim.trim(result.stdout or ""),
-            vim.log.levels.INFO,
-            { title = "codex-workbench" }
-          )
+          vim.notify("Installed: " .. vim.trim(result.stdout or ""), vim.log.levels.INFO, { title = "codex-workbench" })
         else
-          log.write("ERROR", "binary_install_failed", {
-            stderr = result.stderr,
-            stdout = result.stdout,
-            code = result.code,
-          })
-          vim.notify(
-            error_codes.format({ code = "internal_error" }) .. "\nLog: " .. log.path(),
-            vim.log.levels.ERROR,
-            { title = "codex-workbench" }
-          )
+          vim.notify(result.stderr ~= "" and result.stderr or "install failed", vim.log.levels.ERROR, { title = "codex-workbench" })
         end
       end)
     end)
