@@ -12,7 +12,7 @@ use fs2::FileExt as _;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::app_server::AppServerClient;
+use crate::app_server::{AppServer, AppServerClient};
 use crate::git::{GitInvocationError, GitRepo};
 use crate::review::{files_from_patch, patch_for_scope, remaining_after_scope};
 use crate::shadow::ShadowWorkspace;
@@ -35,7 +35,7 @@ pub struct Manager {
     shadow: Option<ShadowWorkspace>,
     state: SessionState,
     state_path: Option<PathBuf>,
-    app_server: Option<AppServerClient>,
+    app_server: Option<Box<dyn AppServer>>,
     /// Exclusive lock file held for the lifetime of this Manager instance.
     /// Dropping the Manager automatically releases the lock.
     _lock: Option<File>,
@@ -58,6 +58,13 @@ impl Manager {
             app_server: None,
             _lock: None,
         }
+    }
+
+    /// Inject a custom [`AppServer`] implementation before the first `ask` /
+    /// `threads` call. Used in integration tests to avoid spawning a real Codex
+    /// process; also useful for diagnostics in production.
+    pub fn inject_app_server(&mut self, app: Box<dyn AppServer>) {
+        self.app_server = Some(app);
     }
 
     pub fn handle(
@@ -186,11 +193,11 @@ impl Manager {
         self.ensure_app_server()?;
         if params.new_thread {
             self.state.thread_id = None;
-            self.app_server.as_mut().unwrap().set_thread_id(None);
+            self.app_server.as_deref_mut().unwrap().set_thread_id(None);
         } else if let Some(thread_id) = params.thread_id.as_deref().filter(|id| !id.is_empty()) {
             let resumed = self
                 .app_server
-                .as_mut()
+                .as_deref_mut()
                 .unwrap()
                 .resume_thread(thread_id, &shadow.shadow_path)?;
             self.state.thread_id = Some(resumed);
@@ -198,14 +205,14 @@ impl Manager {
         } else if let Some(thread_id) = self.state.thread_id.clone() {
             let resumed = self
                 .app_server
-                .as_mut()
+                .as_deref_mut()
                 .unwrap()
                 .resume_thread(&thread_id, &shadow.shadow_path)?;
             self.state.thread_id = Some(resumed);
             self.save_state()?;
         }
 
-        let turn_id = self.app_server.as_mut().unwrap().run_turn(
+        let turn_id = self.app_server.as_deref_mut().unwrap().run_turn(
             &params.prompt,
             &shadow.shadow_path,
             bridge_rx,
@@ -214,8 +221,8 @@ impl Manager {
 
         if let Some(thread_id) = self
             .app_server
-            .as_ref()
-            .and_then(AppServerClient::thread_id)
+            .as_deref()
+            .and_then(|app| app.thread_id())
         {
             self.state.thread_id = Some(thread_id.to_string());
         }
@@ -546,15 +553,15 @@ impl Manager {
         self.state.save(path)
     }
 
-    fn app_server(&mut self) -> Result<&mut AppServerClient> {
+    fn app_server(&mut self) -> Result<&mut dyn AppServer> {
         self.ensure_app_server()?;
-        Ok(self.app_server.as_mut().unwrap())
+        Ok(self.app_server.as_deref_mut().unwrap())
     }
 
     fn ensure_app_server(&mut self) -> Result<()> {
         if self.app_server.is_none() {
             let codex_cmd = self.config()?.codex_cmd.clone();
-            self.app_server = Some(AppServerClient::spawn(&codex_cmd)?);
+            self.app_server = Some(Box::new(AppServerClient::spawn(&codex_cmd)?));
         }
         Ok(())
     }
