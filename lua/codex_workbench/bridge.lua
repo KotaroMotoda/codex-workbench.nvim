@@ -9,6 +9,8 @@ local M = {
   callbacks = {},
   init_callbacks = {},
   initializing = false,
+  stdout_pending = "",
+  stderr_pending = "",
   state = {
     initialized = false,
     phase = "idle",
@@ -131,18 +133,39 @@ local function handle_message(line)
   end
 end
 
-local function on_stdout(_, data)
-  for _, line in ipairs(data or {}) do
-    handle_message(line)
+local function consume_lines(data, pending, line_handler)
+  if not data or #data == 0 then
+    return pending
   end
+
+  for index, chunk in ipairs(data) do
+    local line = chunk
+    if index == 1 then
+      line = pending .. line
+    end
+
+    if index == #data then
+      pending = line
+    else
+      line_handler(line)
+    end
+  end
+
+  return pending
+end
+
+local function on_stdout(_, data)
+  M.stdout_pending = consume_lines(data, M.stdout_pending, function(line)
+    handle_message(line)
+  end)
 end
 
 local function on_stderr(_, data)
-  for _, line in ipairs(data or {}) do
+  M.stderr_pending = consume_lines(data, M.stderr_pending, function(line)
     if line ~= "" then
       notify_error(line)
     end
-  end
+  end)
 end
 
 function M.start(opts)
@@ -169,6 +192,14 @@ function M.start(opts)
     on_stdout = on_stdout,
     on_stderr = on_stderr,
     on_exit = function(_, code)
+      if M.stdout_pending ~= "" then
+        handle_message(M.stdout_pending)
+        M.stdout_pending = ""
+      end
+      if M.stderr_pending ~= "" then
+        notify_error(M.stderr_pending)
+        M.stderr_pending = ""
+      end
       M.job_id = nil
       M.initializing = false
       M.state.initialized = false
