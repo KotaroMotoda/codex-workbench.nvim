@@ -23,11 +23,12 @@ function M.check(opts)
   end
 
   local bridge = require("codex_workbench.bridge")
+  local error_codes = require("codex_workbench.error_codes")
   bridge.request("health", {}, function(response)
     if response.ok then
       vim.health.ok("bridge responded")
     else
-      vim.health.error(response.error or "bridge health failed")
+      vim.health.error(error_codes.format(response))
     end
   end)
 end
