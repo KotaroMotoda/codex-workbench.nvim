@@ -30,6 +30,8 @@ pub fn files_from_patch(patch: &str) -> Vec<ReviewFile> {
             || line.starts_with("Binary files ")
             || line.starts_with("old mode ")
             || line.starts_with("new mode ")
+            || line.starts_with("new file mode ")
+            || line.starts_with("deleted file mode ")
             || line.starts_with("rename from ")
             || line.starts_with("rename to ")
             || line.starts_with("similarity index ")
@@ -224,6 +226,15 @@ index 1111111..2222222 100644
 GIT binary patch
 "#;
 
+    const NEW_FILE_PATCH: &str = r#"diff --git a/new.txt b/new.txt
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1 @@
++hello
+"#;
+
     #[test]
     fn parses_files_and_binary_fallback() {
         let files = files_from_patch(PATCH);
@@ -252,5 +263,12 @@ GIT binary patch
         let patch = remaining_after_scope(PATCH, "file:a.txt").unwrap();
         assert!(!patch.contains("a.txt"));
         assert!(patch.contains("bin.dat"));
+    }
+
+    #[test]
+    fn treats_new_files_as_file_only() {
+        let files = files_from_patch(NEW_FILE_PATCH);
+        assert_eq!(files[0].path, "new.txt");
+        assert!(files[0].file_only);
     }
 }

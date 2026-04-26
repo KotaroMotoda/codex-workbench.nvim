@@ -1,4 +1,15 @@
 local M = {}
+local log = require("codex_workbench.log")
+
+local function report_error(response)
+  if response and not response.ok then
+    local message = response.error or "request failed"
+    log.write("ERROR", message, response)
+    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
+    return true
+  end
+  return false
+end
 
 function M.register(opts)
   local bridge = require("codex_workbench.bridge")
@@ -6,22 +17,43 @@ function M.register(opts)
   local output = require("codex_workbench.ui.output")
   local review = require("codex_workbench.ui.review")
 
+  output.configure(opts.ui.output)
+  review.configure(opts.ui.review)
+
+  local function with_bridge(callback)
+    bridge.initialize(opts, function(response)
+      if report_error(response) then
+        return
+      end
+      callback()
+    end)
+  end
+
+  local function review_action(method, scope)
+    with_bridge(function()
+      bridge.request(method, { scope = scope or "all" }, function(response)
+        if not report_error(response) then
+          vim.cmd("checktime")
+        end
+      end)
+    end)
+  end
+
   vim.api.nvim_create_user_command("CodexWorkbenchOpen", function()
-    bridge.initialize(opts)
-    output.open()
+    with_bridge(function()
+      output.open()
+    end)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchAsk", function(command)
-    bridge.initialize(opts)
     local function submit(prompt)
       if not prompt or prompt == "" then
         return
       end
-      output.open()
-      bridge.request("ask", { prompt = context.resolve(prompt, opts) }, function(response)
-        if not response.ok then
-          vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
-        end
+      with_bridge(function()
+        output.open()
+        output.start_turn()
+        bridge.request("ask", { prompt = context.resolve(prompt, opts) }, report_error)
       end)
     end
 
@@ -33,59 +65,61 @@ function M.register(opts)
   end, { nargs = "*" })
 
   vim.api.nvim_create_user_command("CodexWorkbenchReview", function()
-    bridge.request("review", {}, function(response)
-      if response.ok then
-        review.open(response.result.pending)
-      else
-        vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
-      end
+    with_bridge(function()
+      bridge.request("review", {}, function(response)
+        if not report_error(response) then
+          review.open(response.result.pending)
+        end
+      end)
     end)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchAccept", function(command)
-    bridge.request("accept", { scope = command.args ~= "" and command.args or "all" }, function(response)
-      if response.ok then
-        vim.cmd("checktime")
-      else
-        vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
-      end
-    end)
+    review_action("accept", command.args ~= "" and command.args or "all")
   end, { nargs = "?" })
 
   vim.api.nvim_create_user_command("CodexWorkbenchReject", function(command)
-    bridge.request("reject", { scope = command.args ~= "" and command.args or "all" }, function(response)
-      if response.ok then
-        vim.cmd("checktime")
-      else
-        vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
-      end
-    end)
+    review_action("reject", command.args ~= "" and command.args or "all")
   end, { nargs = "?" })
 
+  vim.api.nvim_create_user_command("CodexWorkbenchAbandon", function()
+    review_action("abandon_review", "all")
+  end, {})
+
   vim.api.nvim_create_user_command("CodexWorkbenchResume", function(command)
-    bridge.request("resume", { thread_id = command.args ~= "" and command.args or nil }, function(response)
-      if not response.ok then
-        vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
-      end
+    with_bridge(function()
+      bridge.request("resume", { thread_id = command.args ~= "" and command.args or nil }, report_error)
     end)
   end, { nargs = "?" })
 
   vim.api.nvim_create_user_command("CodexWorkbenchFork", function()
-    bridge.request("fork", {}, function(response)
-      if not response.ok then
-        vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
-      end
+    with_bridge(function()
+      bridge.request("fork", {}, report_error)
     end)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchStatus", function()
-    bridge.request("status", {}, function(response)
-      print(vim.inspect(response.result or response.error))
+    with_bridge(function()
+      bridge.request("status", {}, function(response)
+        if not report_error(response) then
+          print(vim.inspect(response.result))
+        end
+      end)
     end)
   end, {})
 
+  vim.api.nvim_create_user_command("CodexWorkbenchToggleDetails", function()
+    output.toggle_details()
+  end, {})
+
+  vim.api.nvim_create_user_command("CodexWorkbenchLogs", function()
+    log.open()
+  end, {})
+
   vim.api.nvim_create_user_command("CodexWorkbenchHealth", function()
-    require("codex_workbench.health").check(opts)
+    with_bridge(function()
+      require("codex_workbench.health").check(opts)
+    end)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchInstallBinary", function()

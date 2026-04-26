@@ -1,13 +1,17 @@
 local output = require("codex_workbench.ui.output")
 local review = require("codex_workbench.ui.review")
 local approval = require("codex_workbench.ui.approval")
+local log = require("codex_workbench.log")
 
 local M = {
   job_id = nil,
   next_id = 1,
   callbacks = {},
+  init_callbacks = {},
+  initializing = false,
   state = {
     initialized = false,
+    phase = "idle",
     pending_review = nil,
     thread_id = nil,
     shadow_path = nil,
@@ -38,28 +42,41 @@ local function executable(opts)
 end
 
 local function notify_error(message)
+  log.write("ERROR", message)
   vim.schedule(function()
-    vim.notify(message, vim.log.levels.ERROR, { title = "codex-workbench" })
+    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
   end)
 end
 
 local function handle_event(message)
   if message.event == "ready" then
     M.state.initialized = true
+    M.state.phase = "ready"
     M.state.shadow_path = message.shadow_path
     M.state.thread_id = message.state and message.state.thread_id or nil
+  elseif message.event == "turn_started" then
+    M.state.phase = "running"
+    output.start_turn(message)
+  elseif message.event == "turn_completed" then
+    M.state.phase = "ready"
+    output.finish_turn(message)
   elseif message.event == "output_delta" then
     output.append(message.text or "")
+  elseif message.event == "message_completed" then
+    output.set_final(message.text or "")
   elseif message.event == "diff_preview" then
     output.set_diff_preview(message.diff or "")
   elseif message.event == "review_created" then
+    M.state.phase = "review"
     M.state.pending_review = message.item
     review.open(message.item)
   elseif message.event == "review_state" then
     local pending = message.pending
+    M.state.phase = pending and "review" or "ready"
     M.state.pending_review = pending
     review.render(pending)
   elseif message.event == "approval_request" then
+    log.write("INFO", "approval_request", message)
     approval.request(message, function(decision)
       M.request("approval_response", {
         approval_id = message.approval_id,
@@ -67,11 +84,16 @@ local function handle_event(message)
       })
     end)
   elseif message.event == "shadow_warning" then
+    log.write("WARN", "shadow_warning", message)
     vim.schedule(function()
       vim.notify(message.path .. ": " .. message.reason, vim.log.levels.WARN, { title = "codex-workbench" })
     end)
   elseif message.event == "appserver_event" then
-    output.handle_appserver_event(message.method, message.params)
+    output.handle_appserver_event(message.method, message.summary)
+  elseif message.event == "turn_error" then
+    M.state.phase = "ready"
+    log.write("ERROR", "turn_error", message)
+    output.show_error(message.message or "Codex turn failed")
   elseif message.event == "error" then
     notify_error(message.message or "unknown bridge error")
   end
@@ -83,7 +105,8 @@ local function handle_message(line)
   end
   local ok, message = pcall(vim.json.decode, line)
   if not ok then
-    notify_error("invalid bridge JSON: " .. line)
+    log.write("ERROR", "invalid bridge JSON", line)
+    notify_error("bridge returned invalid JSON")
     return
   end
 
@@ -97,6 +120,9 @@ local function handle_message(line)
   end
 
   if message.event then
+    if message.event ~= "output_delta" and message.event ~= "diff_preview" then
+      log.write("DEBUG", "bridge_event:" .. message.event, message)
+    end
     vim.schedule(function()
       handle_event(message)
     end)
@@ -142,8 +168,10 @@ function M.start(opts)
     on_stderr = on_stderr,
     on_exit = function(_, code)
       M.job_id = nil
+      M.initializing = false
       M.state.initialized = false
-      if code ~= 0 then
+      M.state.phase = "idle"
+      if code ~= 0 and code ~= 130 and code ~= 143 then
         notify_error("bridge exited with code " .. tostring(code))
       end
     end,
@@ -158,6 +186,15 @@ function M.start(opts)
 end
 
 function M.initialize(opts, callback)
+  if M.state.initialized then
+    if callback then
+      vim.schedule(function()
+        callback({ ok = true, result = M.state })
+      end)
+    end
+    return
+  end
+
   if not M.start(opts) then
     return
   end
@@ -168,6 +205,12 @@ function M.initialize(opts, callback)
     end
   end
 
+  table.insert(M.init_callbacks, callback)
+  if M.initializing then
+    return
+  end
+  M.initializing = true
+
   M.request("initialize", {
     workspace = vim.uv.cwd(),
     state_dir = vim.fn.stdpath("state") .. "/codex-workbench",
@@ -175,7 +218,23 @@ function M.initialize(opts, callback)
     codex_cmd = opts.codex_cmd,
     max_untracked_file_bytes = opts.shadow.max_untracked_file_bytes,
     max_untracked_total_bytes = opts.shadow.max_untracked_total_bytes,
-  }, callback)
+  }, function(response)
+    M.initializing = false
+    if response.ok then
+      M.state.initialized = true
+      M.state.phase = "ready"
+      if response.result then
+        M.state.pending_review = response.result.pending_review
+        M.state.thread_id = response.result.thread_id
+        M.state.shadow_path = response.result.shadow_path
+      end
+    end
+    local callbacks = M.init_callbacks
+    M.init_callbacks = {}
+    for _, cb in ipairs(callbacks) do
+      cb(response)
+    end
+  end)
 end
 
 function M.request(method, params, callback)

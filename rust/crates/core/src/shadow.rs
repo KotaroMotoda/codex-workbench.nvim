@@ -176,6 +176,35 @@ mod tests {
         assert!(!shadow.shadow_path.join("ignored.txt").exists());
     }
 
+    #[test]
+    fn final_diff_includes_untracked_shadow_files() {
+        let tmp = tempdir().unwrap();
+        let repo_dir = tmp.path().join("repo");
+        fs::create_dir_all(&repo_dir).unwrap();
+        run(&repo_dir, ["git", "init", "-b", "main"]);
+        run(
+            &repo_dir,
+            ["git", "config", "user.email", "test@example.com"],
+        );
+        run(&repo_dir, ["git", "config", "user.name", "Test"]);
+        fs::write(repo_dir.join("tracked.txt"), "base\n").unwrap();
+        run(&repo_dir, ["git", "add", "."]);
+        run(&repo_dir, ["git", "commit", "-m", "init"]);
+
+        let real = GitRepo::discover(&repo_dir).unwrap();
+        let state_root = tmp.path().join("state");
+        let shadow_root = tmp.path().join("shadows");
+        let shadow = ShadowWorkspace::prepare(&real, &state_root, &shadow_root).unwrap();
+        shadow.sync_from_real(&real, 1024, 1024).unwrap();
+        let shadow_repo = shadow.shadow_repo();
+        let base_tree = shadow_repo.write_worktree_tree().unwrap();
+        fs::write(shadow.shadow_path.join("new.txt"), "created\n").unwrap();
+
+        let diff = shadow_repo.diff_tree_to_worktree(&base_tree).unwrap();
+        assert!(diff.contains("diff --git a/new.txt b/new.txt"));
+        assert!(diff.contains("+created"));
+    }
+
     fn run<const N: usize>(cwd: &Path, args: [&str; N]) {
         let status = Command::new(args[0])
             .args(&args[1..])

@@ -34,6 +34,12 @@ pub struct Manager {
     app_server: Option<AppServerClient>,
 }
 
+impl Default for Manager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Manager {
     pub fn new() -> Self {
         Self {
@@ -72,6 +78,7 @@ impl Manager {
             }
             "resume" => self.resume(request.params),
             "fork" => self.fork(),
+            "abandon_review" => self.abandon_review(sink),
             "status" => self.status(),
             "health" => self.health(),
             "approval_response" => Ok(json!({ "ignored": true })),
@@ -298,12 +305,22 @@ impl Manager {
             .thread_id
             .clone()
             .ok_or_else(|| anyhow!("no thread id to fork"))?;
+        if self.state.pending_review().is_some() {
+            self.abandon_pending_review()?;
+        }
         let shadow_path = self.shadow()?.shadow_path.clone();
         let app = self.app_server()?;
         let forked = app.fork_thread(&source, &shadow_path)?;
         self.state.thread_id = Some(forked.clone());
         self.save_state()?;
         Ok(json!({ "thread_id": forked, "forked_from": source }))
+    }
+
+    fn abandon_review(&mut self, sink: &mut dyn EventSink) -> Result<Value> {
+        self.abandon_pending_review()?;
+        self.save_state()?;
+        sink.emit(BridgeEvent::new("review_state", self.review()?));
+        Ok(json!({ "abandoned": true }))
     }
 
     fn status(&self) -> Result<Value> {
@@ -354,6 +371,23 @@ impl Manager {
         review.patch = remaining;
         review.files = files_from_patch(&review.patch);
         review.error = error;
+        Ok(())
+    }
+
+    fn abandon_pending_review(&mut self) -> Result<()> {
+        let config = self.config()?.clone();
+        let real = self.real()?.clone();
+        let shadow = self.shadow()?.clone();
+        if let Some(review) = self.state.pending_review_mut() {
+            review.status = ReviewStatus::Rejected;
+            review.patch.clear();
+            review.files.clear();
+        }
+        shadow.sync_from_real(
+            &real,
+            config.max_untracked_file_bytes,
+            config.max_untracked_total_bytes,
+        )?;
         Ok(())
     }
 

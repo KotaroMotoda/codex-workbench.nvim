@@ -5,6 +5,9 @@ function M.component()
   if not bridge.state.initialized then
     return "CodexWorkbench:off"
   end
+  if bridge.state.phase == "running" then
+    return "CodexWorkbench:run"
+  end
   if bridge.state.pending_review then
     return "CodexWorkbench:review"
   end
@@ -12,4 +15,3 @@ function M.component()
 end
 
 return M
-
