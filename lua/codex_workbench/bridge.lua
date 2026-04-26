@@ -219,6 +219,14 @@ function M.start(opts)
         log_warn(M.stderr_pending)
         M.stderr_pending = ""
       end
+      -- Flush any in-flight request callbacks so callers don't hang forever.
+      -- Deliver a synthetic crash error rather than leaving them pending.
+      local crashed = { ok = false, error_code = "app_server_crashed" }
+      for _, cb in pairs(M.callbacks) do
+        pcall(cb, crashed)
+      end
+      M.callbacks = {}
+      M.next_id = 1
       M.job_id = nil
       M.initializing = false
       M.state.initialized = false

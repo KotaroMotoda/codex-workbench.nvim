@@ -25,6 +25,10 @@ do
     "no_thread",
     "io_error",
     "internal_error",
+    -- Phase 2
+    "state_unavailable",
+    "workspace_locked",
+    "shadow_unavailable",
   }
   for _, code in ipairs(expected) do
     assert(

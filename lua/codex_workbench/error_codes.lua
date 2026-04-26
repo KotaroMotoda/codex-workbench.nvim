@@ -28,6 +28,10 @@ M.messages = {
   no_thread = "No Codex thread is selected for this action.",
   io_error = "An I/O error occurred. See the log for details.",
   internal_error = "Codex bridge encountered an internal error. See the log for details.",
+  -- Phase 2: idempotency / crash-safety
+  state_unavailable = "Workspace state file is unavailable or corrupt. See the log for details.",
+  workspace_locked = "Another Neovim instance is already using this workspace.",
+  shadow_unavailable = "Shadow worktree is unavailable. See the log for details.",
 }
 
 local function trim_message(text, limit)

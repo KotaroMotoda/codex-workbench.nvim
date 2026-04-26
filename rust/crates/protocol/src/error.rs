@@ -73,6 +73,17 @@ pub enum BridgeError {
 
     #[error("internal error")]
     Internal { message: String },
+
+    // ── Phase 2: idempotency / crash-safety ──────────────────────────────────
+
+    #[error("state file is unavailable: {path}")]
+    StateUnavailable { path: String, reason: String },
+
+    #[error("workspace is locked by another process")]
+    WorkspaceLocked { holder_pid: Option<u32> },
+
+    #[error("shadow worktree is unavailable")]
+    ShadowUnavailable { reason: String },
 }
 
 impl BridgeError {
@@ -97,6 +108,9 @@ impl BridgeError {
             Self::NoThread { .. } => "no_thread",
             Self::Io { .. } => "io_error",
             Self::Internal { .. } => "internal_error",
+            Self::StateUnavailable { .. } => "state_unavailable",
+            Self::WorkspaceLocked { .. } => "workspace_locked",
+            Self::ShadowUnavailable { .. } => "shadow_unavailable",
         }
     }
 
@@ -133,6 +147,15 @@ impl BridgeError {
             Self::NoThread { action } => json!({ "action": action }),
             Self::Io { message } | Self::Internal { message } => {
                 json!({ "message": message })
+            }
+            Self::StateUnavailable { path, reason } => {
+                json!({ "path": path, "reason": reason })
+            }
+            Self::WorkspaceLocked { holder_pid } => {
+                json!({ "holder_pid": holder_pid })
+            }
+            Self::ShadowUnavailable { reason } => {
+                json!({ "reason": reason })
             }
         }
     }
@@ -264,6 +287,13 @@ mod tests {
             BridgeError::NoThread { action: "x".into() }.code(),
             BridgeError::Io { message: "x".into() }.code(),
             BridgeError::Internal { message: "x".into() }.code(),
+            BridgeError::StateUnavailable {
+                path: "x".into(),
+                reason: "y".into(),
+            }
+            .code(),
+            BridgeError::WorkspaceLocked { holder_pid: None }.code(),
+            BridgeError::ShadowUnavailable { reason: "x".into() }.code(),
         ];
         let mut sorted = codes.to_vec();
         sorted.sort();
