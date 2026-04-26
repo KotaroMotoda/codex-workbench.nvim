@@ -2,14 +2,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::Receiver;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use codex_workbench_protocol::{
-    AskParams, BridgeEvent, BridgeRequest, InitializeParams, ScopeParams,
+    AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, ScopeParams,
 };
 use serde_json::{json, Value};
 
 use crate::app_server::AppServerClient;
-use crate::git::GitRepo;
+use crate::git::{GitInvocationError, GitRepo};
 use crate::review::{files_from_patch, patch_for_scope, remaining_after_scope};
 use crate::shadow::ShadowWorkspace;
 use crate::state::{now_unix, state_file, ReviewItem, ReviewStatus, SessionState};
@@ -83,7 +83,9 @@ impl Manager {
             "status" => self.status(),
             "health" => self.health(),
             "approval_response" => Ok(json!({ "ignored": true })),
-            other => Err(anyhow!("unknown bridge method: {other}")),
+            other => Err(anyhow!(BridgeError::UnknownMethod {
+                method: other.to_string(),
+            })),
         }
     }
 
@@ -275,7 +277,7 @@ impl Manager {
             let review = self
                 .state
                 .pending_review()
-                .ok_or_else(|| anyhow!("no pending review"))?;
+                .ok_or_else(|| anyhow!(BridgeError::NoPendingReview))?;
             self.ensure_real_unchanged(review)?;
             patch_for_scope(&review.patch, scope)?
         };
@@ -300,12 +302,19 @@ impl Manager {
                 Ok(json!({ "accepted": scope }))
             }
             Err(error) => {
+                let stderr_tail = error
+                    .downcast_ref::<GitInvocationError>()
+                    .map(|git| git.stderr_tail.clone())
+                    .unwrap_or_else(|| error.to_string());
                 if let Some(review) = self.state.pending_review_mut() {
                     review.status = ReviewStatus::ApplyFailed;
-                    review.error = Some(error.to_string());
+                    review.error = Some(stderr_tail.clone());
                 }
                 self.save_state()?;
-                Err(anyhow!("failed to apply review patch: {error}"))
+                Err(anyhow!(BridgeError::PatchApplyFailed {
+                    scope: scope.to_string(),
+                    stderr_tail,
+                }))
             }
         }
     }
@@ -317,7 +326,7 @@ impl Manager {
         let review = self
             .state
             .pending_review()
-            .ok_or_else(|| anyhow!("no pending review"))?
+            .ok_or_else(|| anyhow!(BridgeError::NoPendingReview))?
             .clone();
         self.ensure_real_unchanged(&review)?;
         self.update_pending_after_scope(scope, false, None)?;
@@ -337,7 +346,7 @@ impl Manager {
             .and_then(Value::as_str)
             .map(str::to_string)
             .or_else(|| self.state.thread_id.clone())
-            .ok_or_else(|| anyhow!("no thread id to resume"))?;
+            .ok_or_else(|| anyhow!(BridgeError::NoThread { action: "resume".into() }))?;
         let shadow_path = self.shadow()?.shadow_path.clone();
         let app = self.app_server()?;
         let resumed = if app.thread_id() == Some(thread_id.as_str()) {
@@ -355,7 +364,7 @@ impl Manager {
             .state
             .thread_id
             .clone()
-            .ok_or_else(|| anyhow!("no thread id to fork"))?;
+            .ok_or_else(|| anyhow!(BridgeError::NoThread { action: "fork".into() }))?;
         if self.state.pending_review().is_some() {
             self.abandon_pending_review()?;
         }
@@ -410,7 +419,7 @@ impl Manager {
         let review = self
             .state
             .pending_review_mut()
-            .ok_or_else(|| anyhow!("no pending review"))?;
+            .ok_or_else(|| anyhow!(BridgeError::NoPendingReview))?;
         let remaining = remaining_after_scope(&review.patch, scope)?;
         if remaining.trim().is_empty() {
             review.status = if accepted {
@@ -445,9 +454,7 @@ impl Manager {
     fn ensure_no_pending_review(&self) -> Result<()> {
         if let Some(review) = self.state.pending_review() {
             self.ensure_real_unchanged(review)?;
-            return Err(anyhow!(
-                "pending review exists; accept, reject, or fork before sending a new prompt"
-            ));
+            return Err(anyhow!(BridgeError::ReviewPending));
         }
         Ok(())
     }
@@ -459,19 +466,17 @@ impl Manager {
             config.max_untracked_total_bytes,
         )?;
         if fingerprint != review.real_fingerprint {
-            return Err(anyhow!(
-                "real workspace changed while review is pending; accept/reject is blocked"
-            ));
+            return Err(anyhow!(BridgeError::RealWorkspaceChanged));
         }
         Ok(())
     }
 
     fn save_state(&self) -> Result<()> {
-        self.state.save(
-            self.state_path
-                .as_ref()
-                .context("manager is not initialized")?,
-        )
+        let path = self
+            .state_path
+            .as_ref()
+            .ok_or_else(|| anyhow!(BridgeError::NotInitialized))?;
+        self.state.save(path)
     }
 
     fn app_server(&mut self) -> Result<&mut AppServerClient> {
@@ -490,19 +495,19 @@ impl Manager {
     fn config(&self) -> Result<&RuntimeConfig> {
         self.config
             .as_ref()
-            .ok_or_else(|| anyhow!("bridge is not initialized"))
+            .ok_or_else(|| anyhow!(BridgeError::NotInitialized))
     }
 
     fn real(&self) -> Result<&GitRepo> {
         self.real
             .as_ref()
-            .ok_or_else(|| anyhow!("bridge is not initialized"))
+            .ok_or_else(|| anyhow!(BridgeError::NotInitialized))
     }
 
     fn shadow(&self) -> Result<&ShadowWorkspace> {
         self.shadow
             .as_ref()
-            .ok_or_else(|| anyhow!("bridge is not initialized"))
+            .ok_or_else(|| anyhow!(BridgeError::NotInitialized))
     }
 }
 
