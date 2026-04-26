@@ -89,6 +89,10 @@ fn default_max_untracked_total_bytes() -> u64 {
 #[derive(Debug, Clone, Deserialize)]
 pub struct AskParams {
     pub prompt: String,
+    #[serde(default)]
+    pub thread_id: Option<String>,
+    #[serde(default)]
+    pub new_thread: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

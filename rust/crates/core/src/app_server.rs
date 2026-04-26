@@ -73,6 +73,20 @@ impl AppServerClient {
         Ok(thread_id)
     }
 
+    pub fn list_threads(&mut self, cwd: &[String]) -> Result<Value> {
+        self.request(
+            "thread/list",
+            json!({
+                "cwd": cwd,
+                "archived": false,
+                "limit": 50,
+                "sortKey": "updated_at",
+                "sortDirection": "desc",
+                "sourceKinds": ["cli", "vscode", "appServer", "unknown"],
+            }),
+        )
+    }
+
     pub fn resume_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String> {
         let result = self.request(
             "thread/resume",

@@ -5,6 +5,7 @@ local M = {
   diff_preview = "",
   show_details = false,
   final_text = "",
+  streamed_text = "",
 }
 
 function M.configure(opts)
@@ -79,6 +80,7 @@ end
 
 function M.start_turn()
   M.final_text = ""
+  M.streamed_text = ""
   set_lines({ "# Codex", "", "" })
 end
 
@@ -100,6 +102,7 @@ function M.show_error(message)
 end
 
 function M.append(text)
+  M.streamed_text = M.streamed_text .. text
   append_to_last(text)
 end
 
@@ -108,7 +111,20 @@ function M.set_final(text)
     return
   end
   M.final_text = text
-  set_lines({ "# Codex", "", text })
+  if M.streamed_text == "" then
+    M.append(text)
+    return
+  end
+  if vim.startswith(text, M.streamed_text) then
+    local suffix = text:sub(#M.streamed_text + 1)
+    if suffix ~= "" then
+      M.append(suffix)
+    end
+    return
+  end
+  if not vim.startswith(M.streamed_text, text) then
+    M.append("\n\n--- final ---\n\n" .. text)
+  end
 end
 
 function M.set_diff_preview(diff)

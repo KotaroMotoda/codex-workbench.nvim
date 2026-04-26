@@ -5,6 +5,7 @@ for _, command in ipairs({
   "CodexWorkbenchOpen",
   "CodexWorkbenchAsk",
   "CodexWorkbenchReview",
+  "CodexWorkbenchThreads",
   "CodexWorkbenchAccept",
   "CodexWorkbenchReject",
   "CodexWorkbenchAbandon",

@@ -56,10 +56,12 @@ local function handle_event(message)
     M.state.thread_id = message.state and message.state.thread_id or nil
   elseif message.event == "turn_started" then
     M.state.phase = "running"
-    output.start_turn(message)
+    M.state.thread_id = message.thread_id or M.state.thread_id
   elseif message.event == "turn_completed" then
     M.state.phase = "ready"
     output.finish_turn(message)
+  elseif message.event == "thread_started" then
+    M.state.thread_id = message.thread_id or M.state.thread_id
   elseif message.event == "output_delta" then
     output.append(message.text or "")
   elseif message.event == "message_completed" then
