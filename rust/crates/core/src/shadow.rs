@@ -1,9 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use codex_workbench_protocol::BridgeError;
 
-use crate::git::{repo_hash, worktree_add_detached, GitRepo, UntrackedCopyWarning};
+use crate::git::{git_output, git_success, repo_hash, worktree_add_detached, GitRepo, UntrackedCopyWarning};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ShadowWorkspace {
@@ -25,12 +26,28 @@ impl ShadowWorkspace {
         fs::create_dir_all(&state_dir)?;
         fs::create_dir_all(shadow_root)?;
 
-        if !shadow_path.exists() {
-            worktree_add_detached(&repo.root, &shadow_path).with_context(|| {
-                format!(
-                    "failed to create shadow worktree at {}",
-                    shadow_path.display()
-                )
+        if shadow_path.exists() {
+            // Verify that the directory is still registered as an active git
+            // worktree. If it was left behind by a previous crash (the worktree
+            // entry was pruned but the directory was not removed), a plain
+            // `exists()` check would incorrectly reuse a broken directory.
+            if !is_registered_worktree(&repo.root, &shadow_path)? {
+                // Prune stale entries, then re-add.
+                let _ = git_success(["worktree", "prune"], &repo.root, None);
+                worktree_add_detached(&repo.root, &shadow_path).map_err(|e| {
+                    anyhow!(BridgeError::ShadowUnavailable {
+                        reason: format!("failed to re-add shadow worktree: {e}"),
+                    })
+                })?;
+            }
+        } else {
+            worktree_add_detached(&repo.root, &shadow_path).map_err(|e| {
+                anyhow!(BridgeError::ShadowUnavailable {
+                    reason: format!(
+                        "failed to create shadow worktree at {}: {e}",
+                        shadow_path.display()
+                    ),
+                })
             })?;
         }
 
@@ -63,6 +80,25 @@ impl ShadowWorkspace {
         let warnings = copy_untracked(real, &shadow.root, max_file_bytes, max_total_bytes)?;
         Ok(SyncReport { warnings })
     }
+}
+
+/// Return `true` when `target` appears in `git worktree list --porcelain`
+/// output for `repo_root`. A missing entry means the directory is an orphan
+/// (the worktree was pruned or never properly added).
+fn is_registered_worktree(repo_root: &Path, target: &Path) -> Result<bool> {
+    let output = git_output(["worktree", "list", "--porcelain"], repo_root, None)?;
+    let target_canonical = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+    for line in output.lines() {
+        if let Some(path_str) = line.strip_prefix("worktree ") {
+            let candidate = PathBuf::from(path_str);
+            let candidate_canonical =
+                candidate.canonicalize().unwrap_or(candidate);
+            if candidate_canonical == target_canonical {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 fn copy_untracked(

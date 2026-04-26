@@ -1,3 +1,5 @@
+use std::fs::{File, OpenOptions};
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::Receiver;
@@ -6,13 +8,15 @@ use anyhow::{anyhow, Result};
 use codex_workbench_protocol::{
     AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, ScopeParams,
 };
+use fs2::FileExt as _;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::app_server::AppServerClient;
 use crate::git::{GitInvocationError, GitRepo};
 use crate::review::{files_from_patch, patch_for_scope, remaining_after_scope};
 use crate::shadow::ShadowWorkspace;
-use crate::state::{now_unix, state_file, ReviewItem, ReviewStatus, SessionState};
+use crate::state::{now_unix, state_file, ApplyStage, PendingApply, ReviewItem, ReviewStatus, SessionState};
 
 pub trait EventSink {
     fn emit(&mut self, event: BridgeEvent);
@@ -32,6 +36,9 @@ pub struct Manager {
     state: SessionState,
     state_path: Option<PathBuf>,
     app_server: Option<AppServerClient>,
+    /// Exclusive lock file held for the lifetime of this Manager instance.
+    /// Dropping the Manager automatically releases the lock.
+    _lock: Option<File>,
 }
 
 impl Default for Manager {
@@ -49,6 +56,7 @@ impl Manager {
             state: SessionState::default(),
             state_path: None,
             app_server: None,
+            _lock: None,
         }
     }
 
@@ -99,9 +107,29 @@ impl Manager {
         let shadow_root = PathBuf::from(&params.shadow_root);
         let shadow = ShadowWorkspace::prepare(&real, &state_root, &shadow_root)?;
         let state_path = state_file(&shadow.state_dir);
+
+        // Acquire an exclusive workspace lock before loading state so that
+        // two Neovim instances cannot operate on the same workspace simultaneously.
+        let lock = acquire_workspace_lock(&shadow.state_dir.join(".lock"))?;
+
         let mut state = SessionState::load(&state_path)?;
         state.workspace = real.root.to_string_lossy().to_string();
         state.shadow_path = shadow.shadow_path.to_string_lossy().to_string();
+
+        // Detect an incomplete apply from a previous crash and warn the user.
+        if let Some(pa) = &state.pending_apply {
+            sink.emit(BridgeEvent::new(
+                "recovery_needed",
+                json!({
+                    "stage": pa.stage,
+                    "scope": pa.scope,
+                    "started_at": pa.started_at,
+                }),
+            ));
+            // Clear the stale pending_apply so the workspace is usable again.
+            state.pending_apply = None;
+        }
+
         state.save(&state_path)?;
 
         self.config = Some(RuntimeConfig {
@@ -113,6 +141,7 @@ impl Manager {
         self.shadow = Some(shadow);
         self.state = state;
         self.state_path = Some(state_path);
+        self._lock = Some(lock);
 
         sink.emit(BridgeEvent::new(
             "ready",
@@ -269,6 +298,17 @@ impl Manager {
         }))
     }
 
+    /// Accept a review scope, applying the patch to the real workspace.
+    ///
+    /// The operation is staged so that a crash can be detected on restart:
+    ///
+    /// 1. `pending_apply.stage = Applying`  — saved before `git apply`
+    /// 2. `pending_apply.stage = Applied`   — saved after `git apply` succeeds
+    /// 3. `pending_apply.stage = ShadowResyncing` — saved before shadow sync
+    /// 4. `pending_apply` cleared            — saved after full completion
+    ///
+    /// On the next `initialize`, a leftover `pending_apply` triggers a
+    /// `recovery_needed` event so the user can inspect and remediate.
     fn accept(&mut self, scope: &str, sink: &mut dyn EventSink) -> Result<Value> {
         let config = self.config()?.clone();
         let real = self.real()?.clone();
@@ -282,9 +322,31 @@ impl Manager {
             patch_for_scope(&review.patch, scope)?
         };
 
+        // Stage 1: record intent before touching the real workspace.
+        let patch_sha256 = sha256_hex(&selected_patch);
+        self.state.pending_apply = Some(PendingApply {
+            scope: scope.to_string(),
+            patch_sha256,
+            started_at: now_unix(),
+            stage: ApplyStage::Applying,
+        });
+        self.save_state()?;
+
         match real.apply_patch(&selected_patch) {
             Ok(()) => {
+                // Stage 2: patch applied to real workspace.
+                if let Some(pa) = self.state.pending_apply.as_mut() {
+                    pa.stage = ApplyStage::Applied;
+                }
                 self.update_pending_after_scope(scope, true, None)?;
+                self.save_state()?;
+
+                // Stage 3: shadow re-sync in progress.
+                if let Some(pa) = self.state.pending_apply.as_mut() {
+                    pa.stage = ApplyStage::ShadowResyncing;
+                }
+                self.save_state()?;
+
                 shadow.sync_from_real(
                     &real,
                     config.max_untracked_file_bytes,
@@ -297,6 +359,9 @@ impl Manager {
                 if let Some(review) = self.state.pending_review_mut() {
                     review.real_fingerprint = next_fingerprint;
                 }
+
+                // Done: clear the transactional marker.
+                self.state.pending_apply = None;
                 self.save_state()?;
                 sink.emit(BridgeEvent::new("review_state", self.review()?));
                 Ok(json!({ "accepted": scope }))
@@ -310,6 +375,8 @@ impl Manager {
                     review.status = ReviewStatus::ApplyFailed;
                     review.error = Some(stderr_tail.clone());
                 }
+                // Clear pending_apply on failure — no partial state to recover.
+                self.state.pending_apply = None;
                 self.save_state()?;
                 Err(anyhow!(BridgeError::PatchApplyFailed {
                     scope: scope.to_string(),
@@ -509,6 +576,39 @@ impl Manager {
             .as_ref()
             .ok_or_else(|| anyhow!(BridgeError::NotInitialized))
     }
+}
+
+/// Acquire an exclusive lock on `lock_path`. Writes the current PID into the
+/// lock file so that holder identity is visible on lock contention.
+///
+/// The returned `File` must be kept alive for as long as the lock should be
+/// held — dropping it releases the lock automatically (fs2 uses POSIX advisory
+/// locking on Unix, which is tied to the file descriptor lifetime).
+fn acquire_workspace_lock(lock_path: &std::path::Path) -> Result<File> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(lock_path)?;
+
+    if file.try_lock_exclusive().is_ok() {
+        // We hold the lock — record our PID for diagnostics.
+        file.set_len(0)?;
+        writeln!(file, "{}", std::process::id())?;
+        return Ok(file);
+    }
+
+    // Read the holder PID from the lock file (best-effort).
+    let holder_pid = std::fs::read_to_string(lock_path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok());
+    Err(anyhow!(BridgeError::WorkspaceLocked { holder_pid }))
+}
+
+fn sha256_hex(data: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn trim_preview(text: &str) -> String {
