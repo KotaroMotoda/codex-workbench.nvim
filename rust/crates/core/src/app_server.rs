@@ -431,6 +431,13 @@ fn parse_remote_error(error: &Value) -> (Option<i64>, String) {
 /// Replace the empty `method` placeholder set by `response_result` with the
 /// real method name when we know it. Non-`AppServerError` causes pass through
 /// unchanged so that crashes etc. retain their classification.
+///
+/// # Note on error-chain loss
+/// When the method field is updated we construct a fresh `anyhow::Error`,
+/// which intentionally discards the original cause chain. The chain is not
+/// meaningful here — the bridge error payload is the only information we
+/// forward — and preserving it would require boxing the original error as a
+/// source, complicating `classify` at the outer boundary for no user benefit.
 fn label_app_server_error(err: anyhow::Error, method: &str) -> anyhow::Error {
     if let Some(BridgeError::AppServerError {
         method: existing,

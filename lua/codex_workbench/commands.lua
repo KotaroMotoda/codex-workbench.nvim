@@ -184,7 +184,7 @@ function M.register(opts)
             code = result.code,
           })
           vim.notify(
-            error_codes.messages.internal_error .. "\nLog: " .. log.path(),
+            error_codes.format({ code = "internal_error" }) .. "\nLog: " .. log.path(),
             vim.log.levels.ERROR,
             { title = "codex-workbench" }
           )
