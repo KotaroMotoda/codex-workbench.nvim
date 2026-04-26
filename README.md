@@ -30,9 +30,16 @@ Then use:
 
 ```vim
 :CodexWorkbenchAsk refactor @this
+:CodexWorkbenchThreads
 :CodexWorkbenchReview
 :CodexWorkbenchAccept all
 ```
+
+`:CodexWorkbenchAsk` first lists Codex threads for the current repository
+project, then lets you choose an existing thread or start a new one before the
+prompt is sent. Workbench threads run with `cwd` set to the stable shadow
+worktree for that repository, so the real worktree is still not exposed to
+Codex edits.
 
 Scope forms for accept/reject are `all`, `file:path`, and `hunk:path:index`.
 In the review buffer, `a/r` accepts or rejects all, `A/R` works on the file
@@ -54,6 +61,7 @@ under the cursor, and `h/x` works on the hunk under the cursor.
 - `:CodexWorkbenchOpen`
 - `:CodexWorkbenchAsk [prompt]`
 - `:CodexWorkbenchReview`
+- `:CodexWorkbenchThreads`
 - `:CodexWorkbenchAccept [scope]`
 - `:CodexWorkbenchReject [scope]`
 - `:CodexWorkbenchAbandon`

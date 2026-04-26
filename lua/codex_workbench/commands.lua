@@ -16,6 +16,7 @@ function M.register(opts)
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
   local review = require("codex_workbench.ui.review")
+  local thread_picker = require("codex_workbench.ui.thread_picker")
 
   output.configure(opts.ui.output)
   review.configure(opts.ui.review)
@@ -46,22 +47,38 @@ function M.register(opts)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchAsk", function(command)
-    local function submit(prompt)
+    local function run(prompt, thread)
       if not prompt or prompt == "" then
         return
       end
-      with_bridge(function()
-        output.open()
-        output.start_turn()
-        bridge.request("ask", { prompt = context.resolve(prompt, opts) }, report_error)
-      end)
+      output.open()
+      output.start_turn()
+      bridge.request("ask", {
+        prompt = context.resolve(prompt, opts),
+        thread_id = thread.thread_id,
+        new_thread = thread.new_thread == true,
+      }, report_error)
     end
 
-    if command.args and command.args ~= "" then
-      submit(command.args)
-    else
-      vim.ui.input({ prompt = "Codex: " }, submit)
-    end
+    with_bridge(function()
+      bridge.request("threads", {}, function(threads_response)
+        if report_error(threads_response) then
+          return
+        end
+        thread_picker.select(threads_response.result or {}, function(thread)
+          if not thread then
+            return
+          end
+          if command.args and command.args ~= "" then
+            run(command.args, thread)
+          else
+            vim.ui.input({ prompt = "Codex: " }, function(prompt)
+              run(prompt, thread)
+            end)
+          end
+        end)
+      end)
+    end)
   end, { nargs = "*" })
 
   vim.api.nvim_create_user_command("CodexWorkbenchReview", function()
@@ -70,6 +87,26 @@ function M.register(opts)
         if not report_error(response) then
           review.open(response.result.pending)
         end
+      end)
+    end)
+  end, {})
+
+  vim.api.nvim_create_user_command("CodexWorkbenchThreads", function()
+    with_bridge(function()
+      bridge.request("threads", {}, function(response)
+        if report_error(response) then
+          return
+        end
+        thread_picker.select(response.result or {}, function(selected)
+          if not selected then
+            return
+          end
+          if selected.new_thread then
+            vim.notify("New thread will be used for the next ask", vim.log.levels.INFO, { title = "codex-workbench" })
+          else
+            bridge.request("resume", { thread_id = selected.thread_id }, report_error)
+          end
+        end)
       end)
     end)
   end, {})

@@ -23,10 +23,14 @@ COMMANDS                                           *codex-workbench-commands*
   Start the bridge and open the output pane.
 
 :CodexWorkbenchAsk [prompt]
-  Send a prompt. Without [prompt], opens vim.ui.input().
+  Choose a Codex thread for the current repository, then send a prompt.
+  Without [prompt], opens vim.ui.input() after thread selection.
 
 :CodexWorkbenchReview
   Open the pending review queue.
+
+:CodexWorkbenchThreads
+  Show Codex threads for the current repository and resume the selected thread.
 
 :CodexWorkbenchAccept [scope]
   Apply the pending review to the real workspace. Scope defaults to "all".

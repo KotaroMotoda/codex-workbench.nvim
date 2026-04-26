@@ -68,6 +68,7 @@ impl Manager {
                 self.ask(params, bridge_rx, sink)
             }
             "review" => self.review(),
+            "threads" => self.threads(),
             "accept" => {
                 let params: ScopeParams = serde_json::from_value(request.params)?;
                 self.accept(&params.scope, sink)
@@ -151,17 +152,26 @@ impl Manager {
             config.max_untracked_total_bytes,
         )?;
 
-        if self.app_server.is_none() {
-            self.app_server = Some(AppServerClient::spawn(&config.codex_cmd)?);
-            if let Some(thread_id) = self.state.thread_id.clone() {
-                let resumed = self
-                    .app_server
-                    .as_mut()
-                    .unwrap()
-                    .resume_thread(&thread_id, &shadow.shadow_path)?;
-                self.state.thread_id = Some(resumed);
-                self.save_state()?;
-            }
+        self.ensure_app_server()?;
+        if params.new_thread {
+            self.state.thread_id = None;
+            self.app_server.as_mut().unwrap().set_thread_id(None);
+        } else if let Some(thread_id) = params.thread_id.as_deref().filter(|id| !id.is_empty()) {
+            let resumed = self
+                .app_server
+                .as_mut()
+                .unwrap()
+                .resume_thread(thread_id, &shadow.shadow_path)?;
+            self.state.thread_id = Some(resumed);
+            self.save_state()?;
+        } else if let Some(thread_id) = self.state.thread_id.clone() {
+            let resumed = self
+                .app_server
+                .as_mut()
+                .unwrap()
+                .resume_thread(&thread_id, &shadow.shadow_path)?;
+            self.state.thread_id = Some(resumed);
+            self.save_state()?;
         }
 
         let turn_id = self.app_server.as_mut().unwrap().run_turn(
@@ -213,6 +223,47 @@ impl Manager {
         Ok(json!({
             "pending": self.state.pending_review(),
             "reviews": &self.state.reviews,
+        }))
+    }
+
+    fn threads(&mut self) -> Result<Value> {
+        self.ensure_app_server()?;
+        let real_root = self.real()?.root.to_string_lossy().to_string();
+        let shadow_path = self.shadow()?.shadow_path.to_string_lossy().to_string();
+        let result = self
+            .app_server
+            .as_mut()
+            .unwrap()
+            .list_threads(&[real_root.clone(), shadow_path.clone()])?;
+        let threads = result
+            .get("data")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .map(|thread| {
+                        json!({
+                            "id": thread.get("id").and_then(Value::as_str),
+                            "name": thread.get("name").and_then(Value::as_str),
+                            "preview": thread.get("preview").and_then(Value::as_str).map(trim_preview),
+                            "cwd": thread.get("cwd").and_then(Value::as_str),
+                            "status": thread.get("status").and_then(status_label),
+                            "source": thread.get("source").and_then(source_label),
+                            "updated_at": thread.get("updatedAt"),
+                            "created_at": thread.get("createdAt"),
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        Ok(json!({
+            "project": {
+                "workspace": real_root,
+                "shadow_path": shadow_path,
+                "current_thread_id": &self.state.thread_id,
+            },
+            "threads": threads,
         }))
     }
 
@@ -424,11 +475,16 @@ impl Manager {
     }
 
     fn app_server(&mut self) -> Result<&mut AppServerClient> {
+        self.ensure_app_server()?;
+        Ok(self.app_server.as_mut().unwrap())
+    }
+
+    fn ensure_app_server(&mut self) -> Result<()> {
         if self.app_server.is_none() {
             let codex_cmd = self.config()?.codex_cmd.clone();
             self.app_server = Some(AppServerClient::spawn(&codex_cmd)?);
         }
-        Ok(self.app_server.as_mut().unwrap())
+        Ok(())
     }
 
     fn config(&self) -> Result<&RuntimeConfig> {
@@ -448,4 +504,33 @@ impl Manager {
             .as_ref()
             .ok_or_else(|| anyhow!("bridge is not initialized"))
     }
+}
+
+fn trim_preview(text: &str) -> String {
+    let flattened = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = String::new();
+    for (idx, ch) in flattened.chars().enumerate() {
+        if idx >= 120 {
+            out.push('…');
+            return out;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn status_label(value: &Value) -> Option<&str> {
+    value
+        .get("type")
+        .and_then(Value::as_str)
+        .or_else(|| value.as_str())
+}
+
+fn source_label(value: &Value) -> Option<&str> {
+    value.as_str().or_else(|| {
+        value
+            .get("custom")
+            .and_then(Value::as_str)
+            .or_else(|| value.get("subAgent").map(|_| "subAgent"))
+    })
 }
