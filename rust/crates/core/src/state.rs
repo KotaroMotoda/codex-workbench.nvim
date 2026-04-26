@@ -180,7 +180,7 @@ mod tests {
         state.workspace = "/test/workspace".to_string();
         state.save(&path).unwrap();
         assert!(path.exists());
-        assert!(bak_path(&path).exists() == false); // no bak on first write
+        assert!(!bak_path(&path).exists()); // no bak on first write
 
         // Save again — this time a .bak should appear.
         state.thread_id = Some("t1".into());

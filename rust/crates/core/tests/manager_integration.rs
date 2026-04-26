@@ -170,8 +170,8 @@ fn find_state_json(state_root: &Path) -> std::path::PathBuf {
 /// Convenience wrapper: creates a git workspace, runs `initialize`, and
 /// exposes helpers for subsequent requests.
 struct TestEnv {
-    workspace: TempDir,
-    state_root: TempDir,
+    _workspace: TempDir,
+    _state_root: TempDir,
     _shadow_root: TempDir,
     manager: Manager,
     sink: RecordingSink,
@@ -207,8 +207,8 @@ impl TestEnv {
             .unwrap();
 
         Self {
-            workspace,
-            state_root,
+            _workspace: workspace,
+            _state_root: state_root,
             _shadow_root: shadow_root,
             manager,
             sink,
