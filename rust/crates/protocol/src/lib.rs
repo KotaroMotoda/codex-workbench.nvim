@@ -1,3 +1,7 @@
+pub mod error;
+
+pub use error::{BridgeError, ErrorPayload};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -15,6 +19,14 @@ pub struct BridgeResponse {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
+    /// Stable, snake_case error code. Always set when `ok` is `false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    /// Optional structured details (truncated stderr, file paths, ...).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_details: Option<Value>,
+    /// Backward-compatible plain message. Lua will only render this if it has
+    /// no localized message for `error_code`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -25,16 +37,21 @@ impl BridgeResponse {
             id,
             ok: true,
             result: Some(serde_json::to_value(result).unwrap_or(Value::Null)),
+            error_code: None,
+            error_details: None,
             error: None,
         }
     }
 
-    pub fn err(id: u64, error: impl Into<String>) -> Self {
+    pub fn err(id: u64, error: &BridgeError) -> Self {
+        let payload = ErrorPayload::from_bridge_error(error);
         Self {
             id,
             ok: false,
             result: None,
-            error: Some(error.into()),
+            error_code: Some(payload.code),
+            error_details: payload.details,
+            error: Some(payload.message),
         }
     }
 }

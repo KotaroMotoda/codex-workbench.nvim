@@ -3,8 +3,8 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
 use anyhow::Result;
-use codex_workbench_core::{EventSink, Manager};
-use codex_workbench_protocol::{BridgeEvent, BridgeRequest, BridgeResponse};
+use codex_workbench_core::{classify, EventSink, Manager};
+use codex_workbench_protocol::{BridgeError, BridgeEvent, BridgeRequest, BridgeResponse};
 use serde_json::json;
 
 struct StdoutSink;
@@ -24,7 +24,10 @@ fn main() -> Result<()> {
         let id = request.id;
         let response = match manager.handle(request, &rx, &mut sink) {
             Ok(result) => id.map(|id| BridgeResponse::ok(id, result)),
-            Err(err) => id.map(|id| BridgeResponse::err(id, err.to_string())),
+            Err(err) => {
+                let bridge_error = classify(err);
+                id.map(|id| BridgeResponse::err(id, &bridge_error))
+            }
         };
 
         if let Some(response) = response {
@@ -53,9 +56,16 @@ fn spawn_stdin_reader() -> Receiver<BridgeRequest> {
                     }
                 }
                 Err(error) => {
+                    let bridge_error = BridgeError::InvalidRequest {
+                        message: error.to_string(),
+                    };
                     let event = BridgeEvent::new(
                         "error",
-                        json!({ "message": format!("invalid bridge request: {error}") }),
+                        json!({
+                            "code": bridge_error.code(),
+                            "message": bridge_error.to_string(),
+                            "details": bridge_error.details(),
+                        }),
                     );
                     let _ = write_json(&event);
                 }

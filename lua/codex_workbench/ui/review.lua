@@ -49,11 +49,18 @@ local function ensure_window()
 end
 
 local function request_review_action(method, scope)
+  local log = require("codex_workbench.log")
+  local error_codes = require("codex_workbench.error_codes")
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if response.ok then
       vim.cmd("checktime")
     else
-      vim.notify(response.error, vim.log.levels.ERROR, { title = "codex-workbench" })
+      log.write("ERROR", "review_action_failed", response)
+      vim.notify(
+        error_codes.format(response) .. "\nLog: " .. log.path(),
+        vim.log.levels.ERROR,
+        { title = "codex-workbench" }
+      )
     end
   end)
 end
