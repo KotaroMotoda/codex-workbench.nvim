@@ -40,14 +40,12 @@ impl std::error::Error for GitInvocationError {}
 
 fn truncate_for_display(text: &str, max_chars: usize) -> String {
     let trimmed = text.trim();
-    if trimmed.chars().count() <= max_chars {
-        return trimmed.to_string();
-    }
-    let mut out = String::with_capacity(max_chars);
+    // Single pass: avoids the O(n) `chars().count()` pre-scan.
+    let mut out = String::with_capacity(max_chars.min(trimmed.len()));
     for (idx, ch) in trimmed.chars().enumerate() {
         if idx >= max_chars {
             out.push('…');
-            break;
+            return out;
         }
         out.push(ch);
     }
@@ -231,13 +229,15 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let collected: Vec<OsString> = args
-        .into_iter()
-        .map(|arg| arg.as_ref().to_os_string())
-        .collect();
-    let descriptor = describe_args(&collected);
+    // Use Peekable to read the first argument (subcommand) for the error
+    // descriptor without collecting the whole iterator into a Vec.
+    let mut args = args.into_iter().peekable();
+    let descriptor = args
+        .peek()
+        .map(|first| first.as_ref().to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unknown".to_string());
     let mut command = Command::new("git");
-    command.args(&collected).current_dir(cwd);
+    command.args(args).current_dir(cwd);
     if stdin.is_some() {
         command.stdin(Stdio::piped());
     }
@@ -258,14 +258,6 @@ where
     Ok(output.stdout)
 }
 
-fn describe_args(args: &[OsString]) -> String {
-    // Only the leading subcommand is interesting for error categorization.
-    // We deliberately avoid leaking long arg lists or paths into the
-    // descriptor — those go through structured details if needed.
-    args.first()
-        .map(|first| first.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "unknown".to_string())
-}
 
 pub fn git_success<I, S>(args: I, cwd: &Path, stdin: Option<&[u8]>) -> Result<()>
 where

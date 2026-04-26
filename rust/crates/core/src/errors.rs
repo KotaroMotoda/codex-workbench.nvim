@@ -13,6 +13,13 @@ use crate::git::GitInvocationError;
 /// Reduce `anyhow::Error` to a typed `BridgeError`. Already-typed errors are
 /// preserved; unknown errors collapse to `Internal { message }` with a short,
 /// non-leaky description.
+///
+/// # Convention
+/// `BridgeError` variants must **not** be wrapped with `.context("…")` before
+/// reaching this boundary. Adding context makes the outermost error type
+/// `anyhow::context::ContextError`, causing `downcast_ref::<BridgeError>()` to
+/// miss the inner variant and fall through to `Internal`. All sites in this
+/// crate that produce typed errors return them directly via `anyhow!(variant)`.
 pub fn classify(error: anyhow::Error) -> BridgeError {
     if let Some(typed) = error.downcast_ref::<BridgeError>() {
         return typed.clone();
@@ -38,21 +45,26 @@ pub fn classify(error: anyhow::Error) -> BridgeError {
 
 /// Render an error and its causes without leaking large blobs. We keep the
 /// chain short so that the message stays safe to display in a notification.
+///
+/// Uses a running character counter so we never call `chars().count()` (O(n))
+/// inside the iteration loop.
 fn short_chain(error: &anyhow::Error) -> String {
     const MAX_CHARS: usize = 240;
     let mut out = String::new();
-    for (idx, cause) in error.chain().enumerate() {
+    let mut char_count: usize = 0;
+    'outer: for (idx, cause) in error.chain().enumerate() {
         if idx > 0 {
             out.push_str(": ");
+            char_count += 2;
         }
-        out.push_str(&cause.to_string());
-        if out.chars().count() >= MAX_CHARS {
-            break;
+        for ch in cause.to_string().chars() {
+            if char_count >= MAX_CHARS {
+                out.push('…');
+                break 'outer;
+            }
+            out.push(ch);
+            char_count += 1;
         }
-    }
-    if out.chars().count() > MAX_CHARS {
-        out = out.chars().take(MAX_CHARS).collect::<String>();
-        out.push('…');
     }
     out
 }
