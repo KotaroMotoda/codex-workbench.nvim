@@ -431,6 +431,9 @@ fn turn_error_message(value: &Value) -> Option<String> {
         .pointer("/params/turn")
         .or_else(|| value.get("turn"))?;
     let error = turn.get("error")?;
+    if error.is_null() {
+        return None;
+    }
     Some(summarize_json(error, 1200))
 }
 
@@ -578,5 +581,21 @@ mod tests {
         });
         assert_eq!(agent_message_text(&user), None);
         assert_eq!(agent_message_text(&agent).as_deref(), Some("agent text"));
+    }
+
+    #[test]
+    fn completed_turn_with_null_error_is_successful() {
+        let message = json!({
+            "method": "turn/completed",
+            "params": {
+                "turn": {
+                    "id": "turn",
+                    "status": "completed",
+                    "error": null
+                }
+            }
+        });
+
+        assert_eq!(turn_error_message(&message), None);
     }
 }
