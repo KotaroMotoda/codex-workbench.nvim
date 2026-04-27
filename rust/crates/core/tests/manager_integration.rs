@@ -118,6 +118,9 @@ impl AppServer for MockAppServer {
         _bridge_rx: &Receiver<BridgeRequest>,
         _sink: &mut dyn EventSink,
     ) -> Result<String> {
+        if self.thread_id.is_none() {
+            self.start_thread(cwd)?;
+        }
         if let Some((name, content)) = &self.write_file_on_turn {
             std::fs::write(cwd.join(name), content)?;
         }

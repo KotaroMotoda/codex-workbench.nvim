@@ -328,16 +328,14 @@ mod proptests {
         ) {
             let patch = two_hunk_patch("x");
             let result = patch_for_scope(&patch, &scope);
-            match result {
-                Err(e) => {
-                    let is_scope_invalid = e
-                        .downcast_ref::<codex_workbench_protocol::BridgeError>()
-                        .map(|be| be.code() == "scope_invalid")
-                        .unwrap_or(false);
-                    prop_assert!(is_scope_invalid, "expected scope_invalid, got: {e}");
-                }
-                Ok(_) => {} // "a" / "f" / "h" prefixes may accidentally match; allow Ok
+            if let Err(e) = result {
+                let is_scope_invalid = e
+                    .downcast_ref::<codex_workbench_protocol::BridgeError>()
+                    .map(|be| be.code() == "scope_invalid")
+                    .unwrap_or(false);
+                prop_assert!(is_scope_invalid, "expected scope_invalid, got: {e}");
             }
+            // Ok(_): "a" / "f" / "h" prefixes may accidentally match; allow Ok
         }
     }
 }

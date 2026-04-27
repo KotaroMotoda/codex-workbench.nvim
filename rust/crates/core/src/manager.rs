@@ -66,6 +66,10 @@ impl Manager {
     /// `threads` call. Used in integration tests to avoid spawning a real Codex
     /// process; also useful for diagnostics in production.
     pub fn inject_app_server(&mut self, app: Box<dyn AppServer>) {
+        debug_assert!(
+            self.app_server.is_none(),
+            "inject_app_server must be called before the first ask/threads call"
+        );
         self.app_server = Some(app);
     }
 
@@ -598,6 +602,7 @@ fn acquire_workspace_lock(lock_path: &std::path::Path) -> Result<File> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(lock_path)?;
 
     if file.try_lock_exclusive().is_ok() {

@@ -13,6 +13,14 @@ describe("thread_picker.select", function()
     }, overrides or {})
   end
 
+  local original_ui_select
+  before_each(function()
+    original_ui_select = vim.ui.select
+  end)
+  after_each(function()
+    vim.ui.select = original_ui_select
+  end)
+
   it("calls callback with nil when user cancels", function()
     local called_with = "NOT_CALLED"
     vim.ui.select = function(_, _, callback)

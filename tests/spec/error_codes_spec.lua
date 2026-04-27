@@ -65,10 +65,9 @@ describe("error_codes.format", function()
     assert.is_true(#result <= 205, "formatted result should be capped at 205 chars, got " .. #result)
   end)
 
-  it("returns empty string for a nil error field", function()
+  it("returns a non-nil fallback for a response with no error field", function()
     local resp = { ok = false }
     local result = error_codes.format(resp)
-    -- Should not raise an error; result may be empty string or nil-safe
     assert.is_not_nil(result)
   end)
 end)
