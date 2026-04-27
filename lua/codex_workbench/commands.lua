@@ -18,6 +18,7 @@ local function report_error(response)
   return false
 end
 
+---@param opts CodexWorkbenchOpts
 function M.register(opts)
   local bridge = require("codex_workbench.bridge")
   local context = require("codex_workbench.context")

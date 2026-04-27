@@ -14,13 +14,29 @@ diff generation, and patch application.
 - `codex-cli >= 0.124.0`
 - macOS or Linux
 
-## Quickstart
+## Installation
+
+**lazy.nvim:**
+
+```lua
+{
+  "KotaroMotoda/codex-workbench.nvim",
+  build = "cargo build --manifest-path rust/Cargo.toml",
+  config = function()
+    require("codex_workbench").setup({
+      -- see Configuration section for all options
+    })
+  end,
+}
+```
+
+**Manual / dev:**
 
 ```lua
 require("codex_workbench").setup()
 ```
 
-Build the bridge during development:
+Build the bridge manually:
 
 ```sh
 cargo build --manifest-path rust/Cargo.toml
@@ -72,6 +88,60 @@ under the cursor, and `h/x` works on the hunk under the cursor.
 - `:CodexWorkbenchLogs`
 - `:CodexWorkbenchHealth`
 - `:CodexWorkbenchInstallBinary`
+
+## Configuration
+
+All options with their defaults:
+
+```lua
+require("codex_workbench").setup({
+  -- Command used to invoke the Codex CLI
+  codex_cmd = "codex",
+
+  -- Bridge binary
+  binary = {
+    auto_install = false,   -- download binary on first use
+    path = nil,             -- explicit path; overrides auto-discovery
+  },
+
+  -- UI windows
+  ui = {
+    output = {
+      position = "right",   -- "right" | "bottom"
+      size = 40,            -- columns (right) or rows (bottom)
+    },
+    review = {
+      layout = "vertical",  -- "vertical" | "horizontal"
+    },
+  },
+
+  -- Session
+  session = {
+    auto_resume = true,     -- initialize bridge on Neovim startup
+  },
+
+  -- Shadow worktree (where Codex runs its edits)
+  shadow = {
+    root = vim.fn.stdpath("state") .. "/codex-workbench/shadows",
+    max_untracked_file_bytes = 5 * 1024 * 1024,    -- 5 MB per file
+    max_untracked_total_bytes = 50 * 1024 * 1024,  -- 50 MB total
+  },
+
+  -- Context markers available in prompts
+  contexts = {
+    enabled = {
+      this        = true,  -- @this  → current file:line
+      buffer      = true,  -- @buffer → full buffer text
+      selection   = true,  -- @selection → visual selection
+      diagnostics = true,  -- @diagnostics → LSP diagnostics
+      changes     = true,  -- @changes → git diff of current file
+      file        = true,  -- @file(path) → file contents
+    },
+  },
+
+  statusline = { enabled = true },
+})
+```
 
 ## Limitations
 

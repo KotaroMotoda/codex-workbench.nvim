@@ -44,6 +44,9 @@ local function file_contents(path)
   return table.concat(lines, "\n")
 end
 
+---@param prompt string
+---@param opts CodexWorkbenchOpts|{}
+---@return string
 function M.resolve(prompt, opts)
   opts = opts or {}
   local enabled = ((opts.contexts or {}).enabled) or {}

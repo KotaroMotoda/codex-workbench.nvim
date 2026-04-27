@@ -130,6 +130,18 @@ describe("bridge", function()
       assert.is_false(sent)
     end)
 
+    it("delivers not_initialized error to callback when job_id is nil", function()
+      local received = nil
+      bridge.request("status", {}, function(resp) received = resp end)
+
+      -- callback is delivered via vim.schedule; flush it synchronously.
+      vim.wait(100, function() return received ~= nil end)
+
+      assert.is_not_nil(received)
+      assert.is_false(received.ok)
+      assert.equals("not_initialized", received.error_code)
+    end)
+
     it("sends JSONL-encoded payload when job is running", function()
       bridge.start({ binary = { path = "fake-bridge" } })
       local sent_data = nil

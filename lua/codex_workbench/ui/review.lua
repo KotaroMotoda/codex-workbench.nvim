@@ -5,6 +5,7 @@ local M = {
   opts = { layout = "vertical" },
 }
 
+---@param opts CodexWorkbenchReviewOpts|{}
 function M.configure(opts)
   M.opts = vim.tbl_deep_extend("force", M.opts, opts or {})
 end
@@ -24,16 +25,23 @@ local function set_modifiable(value)
 end
 
 local function ensure_window()
-  if M.win and vim.api.nvim_win_is_valid(M.win) then
+  local win_ok = M.win ~= nil and vim.api.nvim_win_is_valid(M.win)
+  local buf_ok = M.buf ~= nil and vim.api.nvim_buf_is_valid(M.buf)
+
+  if win_ok and buf_ok then
     return
   end
-  if M.opts.layout == "horizontal" then
-    vim.cmd("botright 18new")
-  else
-    vim.cmd("botright vertical 84new")
+
+  if not win_ok then
+    if M.opts.layout == "horizontal" then
+      vim.cmd("botright 18new")
+    else
+      vim.cmd("botright vertical 84new")
+    end
+    M.win = vim.api.nvim_get_current_win()
   end
-  M.win = vim.api.nvim_get_current_win()
-  if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
+
+  if not buf_ok then
     M.buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_name(M.buf, "codex-workbench-review")
     vim.bo[M.buf].buftype = "nofile"
@@ -42,10 +50,13 @@ local function ensure_window()
     vim.bo[M.buf].filetype = "diff"
     vim.bo[M.buf].modifiable = false
   end
+
   vim.api.nvim_win_set_buf(M.win, M.buf)
-  vim.wo[M.win].number = false
-  vim.wo[M.win].relativenumber = false
-  vim.wo[M.win].wrap = false
+  if not win_ok then
+    vim.wo[M.win].number = false
+    vim.wo[M.win].relativenumber = false
+    vim.wo[M.win].wrap = false
+  end
 end
 
 local function request_review_action(method, scope)
@@ -171,6 +182,7 @@ local function lines_for(item)
   return lines
 end
 
+---@param item table|nil
 function M.render(item)
   ensure_window()
   M.current = item
@@ -183,6 +195,7 @@ function M.render(item)
   end
 end
 
+---@param item table|nil
 function M.open(item)
   M.render(item)
 end

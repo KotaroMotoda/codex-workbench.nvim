@@ -37,10 +37,11 @@
 
 | Phase | 概要 | 状態 |
 | --- | --- | --- |
-| Phase 1 | 構造化された bridge エラーと localized notification | **完了** (branch `feat/typed-bridge-errors`, commit `96bec72`) |
-| Phase 2 | 冪等性 / クラッシュセーフティ | 未着手 |
-| Phase 3 | テスト強化 | 未着手 |
-| Phase 4 | OSS 作法 (CHANGELOG, version 一元化, 構造化ログ, 型注釈) | 未着手 |
+| Phase 1 | 構造化された bridge エラーと localized notification | **完了** (PR #9) |
+| Phase 2 | 冪等性 / クラッシュセーフティ | **完了** (PR #8) |
+| Phase 3 | テスト強化 | **完了** (PR #10) |
+| Phase 4 | OSS 作法 (CHANGELOG, version 一元化, 構造化ログ, 型注釈) | **完了** (PR #12) |
+| Phase 5 | UX / 品質 polish | **進行中** (branch `feat/ux-polish`) |
 
 ---
 
@@ -350,19 +351,30 @@ mount している。Claude/CI 環境では以下の制約がある:
 
 ---
 
-## 8. 既知の小さな TODO (Phase に紐付かないもの)
+## 8. Phase 5 — UX / 品質 polish (進行中: `feat/ux-polish`)
 
-- `lua/codex_workbench/bridge.lua::M.request` — `not M.job_id` で early
-  return するが、callback が登録される前なので呼び側が永久に待つ
-  パターンになり得る。Phase 2-6 の callback 再生成と一緒に直す。
-- `lua/codex_workbench/context.lua::changes` の `vim.system` に timeout
-  なし。Phase 4-4 で対応予定。
-- `lua/codex_workbench/ui/output.lua` の buffer/window handle が無効に
-  なったときの defensive check が弱い (`:bd` されると次回 ensure_window
-  で undefined behavior 寄りに)。Phase 4 で軽く整理。
-- `rust/crates/core/src/state.rs::now_unix` は `unwrap_or_default`
-  に依存。time-traveling system clock 環境では 0 を吐く。実害は薄い
-  ので優先度低。
+### 8.1 完了した項目
+
+- ✅ `bridge.lua::M.request` callback hang 修正 — job_id が nil のとき
+  callback に `{ ok=false, error_code="not_initialized" }` を
+  `vim.schedule` で即配信するよう修正。
+- ✅ `ui/output.lua` / `ui/review.lua` defensive ensure_window —
+  win_ok / buf_ok を独立に判定し、buf が `:bd` 後に invalid になっても
+  win を再利用して buf だけ再生成できるよう修正。
+- ✅ LuaCATS 網羅率向上 — `config.lua` に `@class CodexWorkbenchOpts`
+  定義。`commands.lua`, `context.lua`, `ui/output.lua`, `ui/review.lua`
+  に `---@param` / `---@return` を追加。
+- ✅ stylua + luacheck を CI に追加 — `.stylua.toml`, `.luacheckrc` 追加。
+  `ci.yml` に `lint` ジョブ (Ubuntu only) を追加。
+- ✅ README: lazy.nvim spec ブロックと全オプションリファレンス表を追加。
+- ✅ `context.lua::changes` の timeout + pcall (Phase 4 で対応済み)。
+
+### 8.2 残存する既知の TODO
+
+- `rust/crates/core/src/state.rs::now_unix` — `unwrap_or_default` に依存。
+  time-traveling clock で 0 を返すが実害は薄い。優先度低。
+- GitHub Release v0.1.0 の作成 (tag push → release.yml がトリガ)。
+  コードは準備完了; ユーザの手動操作が必要。
 
 ---
 
