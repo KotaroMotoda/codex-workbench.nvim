@@ -16,7 +16,9 @@ use crate::app_server::{AppServer, AppServerClient};
 use crate::git::{GitInvocationError, GitRepo};
 use crate::review::{files_from_patch, patch_for_scope, remaining_after_scope};
 use crate::shadow::ShadowWorkspace;
-use crate::state::{now_unix, state_file, ApplyStage, PendingApply, ReviewItem, ReviewStatus, SessionState};
+use crate::state::{
+    now_unix, state_file, ApplyStage, PendingApply, ReviewItem, ReviewStatus, SessionState,
+};
 
 pub trait EventSink {
     fn emit(&mut self, event: BridgeEvent);
@@ -219,11 +221,7 @@ impl Manager {
             sink,
         )?;
 
-        if let Some(thread_id) = self
-            .app_server
-            .as_deref()
-            .and_then(|app| app.thread_id())
-        {
+        if let Some(thread_id) = self.app_server.as_deref().and_then(|app| app.thread_id()) {
             self.state.thread_id = Some(thread_id.to_string());
         }
 
@@ -420,7 +418,11 @@ impl Manager {
             .and_then(Value::as_str)
             .map(str::to_string)
             .or_else(|| self.state.thread_id.clone())
-            .ok_or_else(|| anyhow!(BridgeError::NoThread { action: "resume".into() }))?;
+            .ok_or_else(|| {
+                anyhow!(BridgeError::NoThread {
+                    action: "resume".into()
+                })
+            })?;
         let shadow_path = self.shadow()?.shadow_path.clone();
         let app = self.app_server()?;
         let resumed = if app.thread_id() == Some(thread_id.as_str()) {
@@ -434,11 +436,11 @@ impl Manager {
     }
 
     fn fork(&mut self) -> Result<Value> {
-        let source = self
-            .state
-            .thread_id
-            .clone()
-            .ok_or_else(|| anyhow!(BridgeError::NoThread { action: "fork".into() }))?;
+        let source = self.state.thread_id.clone().ok_or_else(|| {
+            anyhow!(BridgeError::NoThread {
+                action: "fork".into()
+            })
+        })?;
         if self.state.pending_review().is_some() {
             self.abandon_pending_review()?;
         }

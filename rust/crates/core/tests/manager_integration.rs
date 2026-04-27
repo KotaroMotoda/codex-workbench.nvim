@@ -40,7 +40,8 @@ impl RecordingSink {
 
 impl EventSink for RecordingSink {
     fn emit(&mut self, event: BridgeEvent) {
-        self.events.push((event.event.clone(), event.payload.clone()));
+        self.events
+            .push((event.event.clone(), event.payload.clone()));
     }
 }
 
@@ -132,7 +133,11 @@ fn git_init(path: &Path) {
         &["config", "user.email", "test@example.com"],
         &["config", "user.name", "Test"],
     ] {
-        let out = Command::new("git").args(args).current_dir(path).output().unwrap();
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .output()
+            .unwrap();
         assert!(
             out.status.success(),
             "git {args:?} failed: {}",
@@ -141,7 +146,11 @@ fn git_init(path: &Path) {
     }
     std::fs::write(path.join(".gitkeep"), "").unwrap();
     for args in [&["add", "."][..], &["commit", "-m", "init"]] {
-        let out = Command::new("git").args(args).current_dir(path).output().unwrap();
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .output()
+            .unwrap();
         assert!(
             out.status.success(),
             "git {args:?} failed: {}",
@@ -220,7 +229,11 @@ impl TestEnv {
     fn call(&mut self, method: &str, params: Value) -> Result<Value> {
         let (_tx, rx) = mpsc::channel::<BridgeRequest>();
         self.manager.handle(
-            BridgeRequest { id: Some(99), method: method.to_string(), params },
+            BridgeRequest {
+                id: Some(99),
+                method: method.to_string(),
+                params,
+            },
             &rx,
             &mut self.sink,
         )
@@ -289,7 +302,10 @@ fn health_returns_git_flag() {
 fn approval_response_is_silently_ignored() {
     let mut env = TestEnv::setup();
     let result = env
-        .call("approval_response", json!({ "approval_id": "x", "decision": "approved" }))
+        .call(
+            "approval_response",
+            json!({ "approval_id": "x", "decision": "approved" }),
+        )
         .unwrap();
     assert_eq!(result["ignored"], json!(true));
 }
@@ -297,7 +313,8 @@ fn approval_response_is_silently_ignored() {
 #[test]
 fn ask_with_mock_no_diff_returns_no_review() {
     let mut env = TestEnv::setup();
-    env.manager.inject_app_server(Box::new(MockAppServer::new()));
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
 
     let result = env
         .call("ask", json!({ "prompt": "hello", "new_thread": true }))
@@ -310,9 +327,11 @@ fn ask_with_mock_no_diff_returns_no_review() {
 #[test]
 fn ask_with_mock_saves_thread_id_to_state() {
     let mut env = TestEnv::setup();
-    env.manager.inject_app_server(Box::new(MockAppServer::new()));
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
 
-    env.call("ask", json!({ "prompt": "hello", "new_thread": true })).unwrap();
+    env.call("ask", json!({ "prompt": "hello", "new_thread": true }))
+        .unwrap();
 
     let status = env.call("status", json!({})).unwrap();
     assert_eq!(status["thread_id"], json!("mock-thread-1"));
@@ -321,32 +340,43 @@ fn ask_with_mock_saves_thread_id_to_state() {
 #[test]
 fn ask_with_mock_creates_review_when_shadow_changes() {
     let mut env = TestEnv::setup();
-    let mock = MockAppServer::new()
-        .with_shadow_file("codex_output.txt", "hello from codex\n");
+    let mock = MockAppServer::new().with_shadow_file("codex_output.txt", "hello from codex\n");
     env.manager.inject_app_server(Box::new(mock));
 
     let result = env
-        .call("ask", json!({ "prompt": "write a file", "new_thread": true }))
+        .call(
+            "ask",
+            json!({ "prompt": "write a file", "new_thread": true }),
+        )
         .unwrap();
 
     assert_eq!(result["has_review"], json!(true));
-    assert!(env.sink.has_event("review_created"), "expected review_created event");
+    assert!(
+        env.sink.has_event("review_created"),
+        "expected review_created event"
+    );
 
     let review_result = env.call("review", json!({})).unwrap();
-    assert!(review_result["pending"].is_object(), "expected a pending review");
+    assert!(
+        review_result["pending"].is_object(),
+        "expected a pending review"
+    );
 }
 
 #[test]
 fn ask_with_new_thread_flag_starts_fresh_thread() {
     let mut env = TestEnv::setup();
-    env.manager.inject_app_server(Box::new(MockAppServer::new()));
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
 
-    env.call("ask", json!({ "prompt": "first", "new_thread": true })).unwrap();
+    env.call("ask", json!({ "prompt": "first", "new_thread": true }))
+        .unwrap();
     let status = env.call("status", json!({})).unwrap();
     assert_eq!(status["thread_id"], json!("mock-thread-1"));
 
     // ask again with new_thread=true → mock starts_thread again
-    env.call("ask", json!({ "prompt": "second", "new_thread": true })).unwrap();
+    env.call("ask", json!({ "prompt": "second", "new_thread": true }))
+        .unwrap();
     let status2 = env.call("status", json!({})).unwrap();
     assert_eq!(status2["thread_id"], json!("mock-thread-1"));
 }
@@ -354,7 +384,8 @@ fn ask_with_new_thread_flag_starts_fresh_thread() {
 #[test]
 fn threads_uses_injected_mock() {
     let mut env = TestEnv::setup();
-    env.manager.inject_app_server(Box::new(MockAppServer::new()));
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
 
     let result = env.call("threads", json!({})).unwrap();
     let threads = result["threads"].as_array().unwrap();
@@ -365,10 +396,12 @@ fn threads_uses_injected_mock() {
 #[test]
 fn resume_uses_injected_mock() {
     let mut env = TestEnv::setup();
-    env.manager.inject_app_server(Box::new(MockAppServer::new()));
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
 
     // Seed a thread_id via ask.
-    env.call("ask", json!({ "prompt": "p", "new_thread": true })).unwrap();
+    env.call("ask", json!({ "prompt": "p", "new_thread": true }))
+        .unwrap();
 
     let result = env
         .call("resume", json!({ "thread_id": "mock-thread-1" }))
@@ -379,10 +412,12 @@ fn resume_uses_injected_mock() {
 #[test]
 fn fork_uses_injected_mock() {
     let mut env = TestEnv::setup();
-    env.manager.inject_app_server(Box::new(MockAppServer::new()));
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
 
     // Seed a thread_id.
-    env.call("ask", json!({ "prompt": "p", "new_thread": true })).unwrap();
+    env.call("ask", json!({ "prompt": "p", "new_thread": true }))
+        .unwrap();
 
     let result = env.call("fork", json!({})).unwrap();
     assert_eq!(result["forked_from"], json!("mock-thread-1"));
@@ -396,12 +431,14 @@ fn second_initialize_on_same_workspace_fails_with_workspace_locked() {
     let shadow_root = tempfile::tempdir().unwrap();
     git_init(workspace.path());
 
-    let make_params = || json!({
-        "workspace": workspace.path().to_string_lossy(),
-        "state_dir": state_root.path().to_string_lossy(),
-        "shadow_root": shadow_root.path().to_string_lossy(),
-        "codex_cmd": "codex",
-    });
+    let make_params = || {
+        json!({
+            "workspace": workspace.path().to_string_lossy(),
+            "state_dir": state_root.path().to_string_lossy(),
+            "shadow_root": shadow_root.path().to_string_lossy(),
+            "codex_cmd": "codex",
+        })
+    };
 
     let (_tx, rx) = mpsc::channel::<BridgeRequest>();
     let mut sink = RecordingSink::new();
@@ -409,7 +446,11 @@ fn second_initialize_on_same_workspace_fails_with_workspace_locked() {
     // First manager acquires the lock.
     let mut m1 = Manager::new();
     m1.handle(
-        BridgeRequest { id: Some(1), method: "initialize".to_string(), params: make_params() },
+        BridgeRequest {
+            id: Some(1),
+            method: "initialize".to_string(),
+            params: make_params(),
+        },
         &rx,
         &mut sink,
     )
@@ -419,7 +460,11 @@ fn second_initialize_on_same_workspace_fails_with_workspace_locked() {
     let mut m2 = Manager::new();
     let err = m2
         .handle(
-            BridgeRequest { id: Some(2), method: "initialize".to_string(), params: make_params() },
+            BridgeRequest {
+                id: Some(2),
+                method: "initialize".to_string(),
+                params: make_params(),
+            },
             &rx,
             &mut sink,
         )
@@ -438,12 +483,14 @@ fn recovery_needed_event_emitted_when_pending_apply_exists() {
     let shadow_root = tempfile::tempdir().unwrap();
     git_init(workspace.path());
 
-    let make_params = || json!({
-        "workspace": workspace.path().to_string_lossy(),
-        "state_dir": state_root.path().to_string_lossy(),
-        "shadow_root": shadow_root.path().to_string_lossy(),
-        "codex_cmd": "codex",
-    });
+    let make_params = || {
+        json!({
+            "workspace": workspace.path().to_string_lossy(),
+            "state_dir": state_root.path().to_string_lossy(),
+            "shadow_root": shadow_root.path().to_string_lossy(),
+            "codex_cmd": "codex",
+        })
+    };
 
     // First initialize: creates the shadow worktree and state.json.
     {
@@ -451,7 +498,11 @@ fn recovery_needed_event_emitted_when_pending_apply_exists() {
         let mut m = Manager::new();
         let mut sink = RecordingSink::new();
         m.handle(
-            BridgeRequest { id: Some(1), method: "initialize".to_string(), params: make_params() },
+            BridgeRequest {
+                id: Some(1),
+                method: "initialize".to_string(),
+                params: make_params(),
+            },
             &rx,
             &mut sink,
         )
@@ -475,7 +526,11 @@ fn recovery_needed_event_emitted_when_pending_apply_exists() {
     let mut m2 = Manager::new();
     let mut sink2 = RecordingSink::new();
     m2.handle(
-        BridgeRequest { id: Some(2), method: "initialize".to_string(), params: make_params() },
+        BridgeRequest {
+            id: Some(2),
+            method: "initialize".to_string(),
+            params: make_params(),
+        },
         &rx2,
         &mut sink2,
     )
@@ -491,7 +546,11 @@ fn recovery_needed_event_emitted_when_pending_apply_exists() {
     let (_tx3, rx3) = mpsc::channel::<BridgeRequest>();
     let review_result = m2
         .handle(
-            BridgeRequest { id: Some(3), method: "review".to_string(), params: json!({}) },
+            BridgeRequest {
+                id: Some(3),
+                method: "review".to_string(),
+                params: json!({}),
+            },
             &rx3,
             &mut sink2,
         )

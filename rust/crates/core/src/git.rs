@@ -66,8 +66,8 @@ pub struct UntrackedCopyWarning {
 impl GitRepo {
     pub fn discover(workspace: impl AsRef<Path>) -> Result<Self> {
         let workspace = workspace.as_ref();
-        let output = git_output(["rev-parse", "--show-toplevel"], workspace, None).map_err(
-            |error| {
+        let output =
+            git_output(["rev-parse", "--show-toplevel"], workspace, None).map_err(|error| {
                 if error.downcast_ref::<GitInvocationError>().is_some() {
                     anyhow!(BridgeError::NotAGitRepository {
                         workspace: workspace.to_string_lossy().to_string(),
@@ -75,8 +75,7 @@ impl GitRepo {
                 } else {
                     error
                 }
-            },
-        )?;
+            })?;
         let root = PathBuf::from(output.trim());
         if root.as_os_str().is_empty() {
             return Err(anyhow!(BridgeError::NotAGitRepository {
@@ -257,7 +256,6 @@ where
     }
     Ok(output.stdout)
 }
-
 
 pub fn git_success<I, S>(args: I, cwd: &Path, stdin: Option<&[u8]>) -> Result<()>
 where

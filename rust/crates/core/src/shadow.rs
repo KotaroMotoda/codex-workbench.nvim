@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 use codex_workbench_protocol::BridgeError;
 
-use crate::git::{git_output, git_success, repo_hash, worktree_add_detached, GitRepo, UntrackedCopyWarning};
+use crate::git::{
+    git_output, git_success, repo_hash, worktree_add_detached, GitRepo, UntrackedCopyWarning,
+};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ShadowWorkspace {
@@ -87,12 +89,13 @@ impl ShadowWorkspace {
 /// (the worktree was pruned or never properly added).
 fn is_registered_worktree(repo_root: &Path, target: &Path) -> Result<bool> {
     let output = git_output(["worktree", "list", "--porcelain"], repo_root, None)?;
-    let target_canonical = target.canonicalize().unwrap_or_else(|_| target.to_path_buf());
+    let target_canonical = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
     for line in output.lines() {
         if let Some(path_str) = line.strip_prefix("worktree ") {
             let candidate = PathBuf::from(path_str);
-            let candidate_canonical =
-                candidate.canonicalize().unwrap_or(candidate);
+            let candidate_canonical = candidate.canonicalize().unwrap_or(candidate);
             if candidate_canonical == target_canonical {
                 return Ok(true);
             }

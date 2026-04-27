@@ -9,7 +9,7 @@ describe("thread_picker.select", function()
       preview = "preview text",
       status = "notLoaded",
       source = "cli",
-      updated_at = 1_777_036_069,
+      updated_at = 1777036069,
     }, overrides or {})
   end
 
