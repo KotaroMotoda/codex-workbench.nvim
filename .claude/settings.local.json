@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr *)",
+      "Bash(gh run *)",
+      "Bash(cargo fmt *)",
+      "Bash(git *)",
+      "Bash(gh api *)",
+      "Bash(python3 -c ' *)",
+      "Bash(cargo clippy *)",
+      "Bash(cargo test *)",
+      "Bash(xargs rm *)",
+      "Bash(nvim *)"
+    ]
+  }
+}

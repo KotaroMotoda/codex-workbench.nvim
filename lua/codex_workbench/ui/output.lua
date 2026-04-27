@@ -93,8 +93,7 @@ function M.start_turn()
   set_lines({ "# Codex", "", "" })
 end
 
----@param _ any ignored — present for API compatibility with bridge event shape
-function M.finish_turn(_)
+function M.finish_turn()
   append_to_last("\n")
 end
 

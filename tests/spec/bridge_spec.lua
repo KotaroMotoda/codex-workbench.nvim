@@ -18,7 +18,9 @@ describe("bridge", function()
       return 99
     end
     vim.fn.chansend = function(_, _) end
-    vim.fn.jobwait = function(_, _) return { -1 } end
+    vim.fn.jobwait = function(_, _)
+      return { -1 }
+    end
 
     -- Reset singleton state before each test.
     bridge.job_id = nil
@@ -54,7 +56,9 @@ describe("bridge", function()
     end)
 
     it("returns false when jobstart returns zero", function()
-      vim.fn.jobstart = function(_, _) return 0 end
+      vim.fn.jobstart = function(_, _)
+        return 0
+      end
       local ok = bridge.start({ binary = { path = "fake-bridge" } })
       assert.is_false(ok)
     end)

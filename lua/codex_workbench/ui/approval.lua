@@ -18,4 +18,3 @@ function M.request(message, callback)
 end
 
 return M
-

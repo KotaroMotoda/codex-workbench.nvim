@@ -26,7 +26,6 @@ local M = {}
 ---@field session { auto_resume: boolean } auto_resume: initialize bridge on startup (default: true)
 ---@field shadow { root: string, max_untracked_file_bytes: integer, max_untracked_total_bytes: integer }
 ---@field contexts { enabled: CodexWorkbenchContextsEnabled }
----@field keymaps table Extra key mappings (currently unused; reserved for future use)
 ---@field statusline { enabled: boolean }
 
 M.defaults = {
@@ -62,7 +61,6 @@ M.defaults = {
       file = true,
     },
   },
-  keymaps = {},
   statusline = {
     enabled = true,
   },
@@ -75,4 +73,3 @@ function M.setup(opts)
 end
 
 return M
-

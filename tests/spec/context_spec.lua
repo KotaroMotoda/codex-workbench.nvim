@@ -100,7 +100,11 @@ describe("context.resolve", function()
 
     it("replaces @changes with git diff stdout", function()
       vim.system = function(_, _)
-        return { wait = function() return { code = 0, stdout = "diff output" } end }
+        return {
+          wait = function()
+            return { code = 0, stdout = "diff output" }
+          end,
+        }
       end
       local result = context.resolve("@changes", {})
       assert.equals("diff output", result)
@@ -108,7 +112,11 @@ describe("context.resolve", function()
 
     it("resolves @changes to empty string on timeout (pcall error)", function()
       vim.system = function(_, _)
-        return { wait = function() error("timeout") end }
+        return {
+          wait = function()
+            error("timeout")
+          end,
+        }
       end
       local result = context.resolve("@changes", {})
       assert.equals("", result)

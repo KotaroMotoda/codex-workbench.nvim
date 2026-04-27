@@ -8,11 +8,7 @@ local function report_error(response)
   if response and not response.ok then
     log.write("ERROR", "bridge_error", response)
     local message = error_codes.format(response)
-    vim.notify(
-      message .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
+    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
     return true
   end
   return false
@@ -147,7 +143,14 @@ function M.register(opts)
     with_bridge(function()
       bridge.request("status", {}, function(response)
         if not report_error(response) then
-          print(vim.inspect(response.result))
+          local result = response.result or {}
+          local lines = {
+            "phase:   " .. (result.phase or "?"),
+            "thread:  " .. (result.thread_id or "(none)"),
+            "shadow:  " .. (result.shadow_path or "(none)"),
+            "review:  " .. (result.pending_review and "pending" or "none"),
+          }
+          vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, { title = "Codex Status" })
         end
       end)
     end)
@@ -173,11 +176,7 @@ function M.register(opts)
     vim.system({ root .. "/scripts/install_binary.sh" }, { text = true }, function(result)
       vim.schedule(function()
         if result.code == 0 then
-          vim.notify(
-            "Installed: " .. vim.trim(result.stdout or ""),
-            vim.log.levels.INFO,
-            { title = "codex-workbench" }
-          )
+          vim.notify("Installed: " .. vim.trim(result.stdout or ""), vim.log.levels.INFO, { title = "codex-workbench" })
         else
           log.write("ERROR", "binary_install_failed", {
             stderr = result.stderr,
