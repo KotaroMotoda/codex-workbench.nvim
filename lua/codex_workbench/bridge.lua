@@ -31,11 +31,23 @@ local function executable(opts)
     return opts.binary.path
   end
 
-  -- Prefer the newest installed release; glob sorts lexicographically which
-  -- works for semver directories (1.0.0 < 1.1.0 < 2.0.0).
+  -- Prefer the newest installed release, sorted numerically by semver so that
+  -- 0.10.0 correctly sorts after 0.9.0.
   local pattern = vim.fn.stdpath("data") .. "/codex-workbench/bin/*/codex-workbench-bridge"
   local matches = vim.fn.glob(pattern, false, true)
   if matches and #matches > 0 then
+    local function semver(p)
+      local v = p:match("/(%d+%.%d+%.%d+)/codex%-workbench%-bridge$") or "0.0.0"
+      local a, b, c = v:match("^(%d+)%.(%d+)%.(%d+)$")
+      return { tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0 }
+    end
+    table.sort(matches, function(x, y)
+      local vx, vy = semver(x), semver(y)
+      for i = 1, 3 do
+        if vx[i] ~= vy[i] then return vx[i] < vy[i] end
+      end
+      return false
+    end)
     local installed = matches[#matches]
     if vim.fn.executable(installed) == 1 then
       return installed

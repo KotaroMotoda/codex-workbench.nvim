@@ -42,8 +42,12 @@ function M.open()
       if ok and type(entry) == "table" then
         local details_str = ""
         if entry.details ~= nil then
-          local enc_ok, enc = pcall(vim.json.encode, entry.details)
-          details_str = " " .. (enc_ok and enc or vim.inspect(entry.details))
+          if type(entry.details) == "string" then
+            details_str = " " .. entry.details
+          else
+            local enc_ok, enc = pcall(vim.json.encode, entry.details)
+            details_str = " " .. (enc_ok and enc or vim.inspect(entry.details))
+          end
         end
         table.insert(
           pretty,
@@ -56,10 +60,13 @@ function M.open()
   end
 
   local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].filetype = "log"
   vim.api.nvim_buf_set_name(buf, "codex-workbench://log")
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, pretty)
   vim.bo[buf].modifiable = false
-  vim.bo[buf].buftype = "nofile"
   vim.cmd("botright split")
   vim.api.nvim_win_set_buf(0, buf)
 end
