@@ -26,7 +26,7 @@ local function changes()
   if file == "" then
     return ""
   end
-  local result = vim.system({ "git", "diff", "--", file }, { text = true }):wait()
+  local result = vim.system({ "git", "diff", "--", file }, { text = true, timeout = 2000 }):wait()
   return result.stdout or ""
 end
 

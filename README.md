@@ -72,3 +72,11 @@ under the cursor, and `h/x` works on the hunk under the cursor.
 - `:CodexWorkbenchLogs`
 - `:CodexWorkbenchHealth`
 - `:CodexWorkbenchInstallBinary`
+
+## Limitations
+
+- Only one Neovim instance per workspace is supported. The bridge holds an exclusive lock on the workspace state directory; a second instance will refuse to initialize and report `workspace_locked`.
+- Visual-selection context (`@selection`) is only captured when `:CodexWorkbenchAsk` is invoked from visual mode.
+- Binary files, submodule changes, and symlinks are reviewed as entire file items — hunk-level accept/reject is not available for them.
+- `@changes` context uses `git diff` with a 2-second timeout. In very large repositories this may time out and return an empty diff; use `@file(path)` instead when the file is large.
+- Shadow worktree sync copies only tracked files and untracked files under the configured byte limits (`shadow.max_untracked_file_bytes`, `shadow.max_untracked_total_bytes`).

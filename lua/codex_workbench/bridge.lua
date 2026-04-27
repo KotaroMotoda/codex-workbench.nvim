@@ -31,9 +31,15 @@ local function executable(opts)
     return opts.binary.path
   end
 
-  local installed = vim.fn.stdpath("data") .. "/codex-workbench/bin/0.1.0/codex-workbench-bridge"
-  if vim.fn.executable(installed) == 1 then
-    return installed
+  -- Prefer the newest installed release; glob sorts lexicographically which
+  -- works for semver directories (1.0.0 < 1.1.0 < 2.0.0).
+  local pattern = vim.fn.stdpath("data") .. "/codex-workbench/bin/*/codex-workbench-bridge"
+  local matches = vim.fn.glob(pattern, false, true)
+  if matches and #matches > 0 then
+    local installed = matches[#matches]
+    if vim.fn.executable(installed) == 1 then
+      return installed
+    end
   end
 
   local dev = plugin_root() .. "/rust/target/debug/codex-workbench-bridge"
@@ -186,6 +192,8 @@ local function on_stderr(_, data)
   M.stderr_pending = consume_lines(data, M.stderr_pending, log_warn)
 end
 
+---@param opts table
+---@return boolean
 function M.start(opts)
   if M.job_id and vim.fn.jobwait({ M.job_id }, 0)[1] == -1 then
     return true
@@ -246,6 +254,8 @@ function M.start(opts)
   return true
 end
 
+---@param opts table
+---@param callback function|nil
 function M.initialize(opts, callback)
   if M.state.initialized then
     if callback then
@@ -298,6 +308,9 @@ function M.initialize(opts, callback)
   end)
 end
 
+---@param method string
+---@param params table|nil
+---@param callback function|nil
 function M.request(method, params, callback)
   if not M.job_id then
     notify_error({ code = "not_initialized" })
