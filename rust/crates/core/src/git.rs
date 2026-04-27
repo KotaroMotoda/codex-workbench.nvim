@@ -268,3 +268,211 @@ where
 fn path_arg(path: &Path) -> std::ffi::OsString {
     path.as_os_str().to_os_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    use tempfile::tempdir;
+
+    /// Create a git repo at `root` with the given files committed at HEAD.
+    fn git_init_commit(root: &Path, files: &[(&str, &str)]) {
+        for args in [
+            &["init"][..],
+            &["config", "user.email", "test@example.com"],
+            &["config", "user.name", "Test"],
+        ] {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        for (name, content) in files {
+            std::fs::write(root.join(name), content).unwrap();
+        }
+        for args in [&["add", "-A"][..], &["commit", "-m", "init"]] {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+
+    /// Stage all changes in `root` and return the diff vs HEAD (binary, full-index).
+    fn make_staged_patch(root: &Path) -> String {
+        let out = Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let out = Command::new("git")
+            .args(["diff", "--cached", "HEAD", "--binary", "--full-index"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    }
+
+    /// Reset index and working tree back to HEAD (discards all staged/unstaged changes).
+    fn reset_to_head(root: &Path) {
+        for args in [
+            &["reset", "HEAD", "--", "."][..],
+            &["checkout", "--", "."],
+            &["clean", "-fd"],
+        ] {
+            Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn apply_patch_empty_is_noop() {
+        let tmp = tempdir().unwrap();
+        git_init_commit(tmp.path(), &[("f.txt", "hello\n")]);
+        let repo = GitRepo::discover(tmp.path()).unwrap();
+        repo.apply_patch("").unwrap();
+        repo.apply_patch("   \n  ").unwrap();
+    }
+
+    #[test]
+    fn apply_patch_adds_new_file() {
+        let tmp = tempdir().unwrap();
+        git_init_commit(tmp.path(), &[("existing.txt", "base\n")]);
+        std::fs::write(tmp.path().join("new.txt"), "brand new\n").unwrap();
+        let patch = make_staged_patch(tmp.path());
+        assert!(patch.contains("new.txt"));
+
+        reset_to_head(tmp.path());
+        assert!(!tmp.path().join("new.txt").exists());
+
+        GitRepo::discover(tmp.path())
+            .unwrap()
+            .apply_patch(&patch)
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("new.txt")).unwrap(),
+            "brand new\n"
+        );
+    }
+
+    #[test]
+    fn apply_patch_modifies_existing_file() {
+        let tmp = tempdir().unwrap();
+        git_init_commit(tmp.path(), &[("f.txt", "original\n")]);
+        std::fs::write(tmp.path().join("f.txt"), "modified\n").unwrap();
+        let patch = make_staged_patch(tmp.path());
+
+        reset_to_head(tmp.path());
+        GitRepo::discover(tmp.path())
+            .unwrap()
+            .apply_patch(&patch)
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("f.txt")).unwrap(),
+            "modified\n"
+        );
+    }
+
+    #[test]
+    fn apply_patch_renames_file() {
+        let tmp = tempdir().unwrap();
+        git_init_commit(tmp.path(), &[("old.txt", "content\n")]);
+        let out = Command::new("git")
+            .args(["mv", "old.txt", "new.txt"])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        let patch = make_staged_patch(tmp.path());
+
+        reset_to_head(tmp.path());
+        assert!(tmp.path().join("old.txt").exists());
+        assert!(!tmp.path().join("new.txt").exists());
+
+        GitRepo::discover(tmp.path())
+            .unwrap()
+            .apply_patch(&patch)
+            .unwrap();
+        assert!(!tmp.path().join("old.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("new.txt")).unwrap(),
+            "content\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_patch_changes_file_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempdir().unwrap();
+        git_init_commit(tmp.path(), &[("script.sh", "#!/bin/sh\n")]);
+        let path = tmp.path().join("script.sh");
+
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+        let patch = make_staged_patch(tmp.path());
+        if patch.trim().is_empty() {
+            // core.fileMode=false in this environment; skip rather than fail.
+            return;
+        }
+        assert!(patch.contains("mode"), "patch should mention mode change");
+
+        reset_to_head(tmp.path());
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o111,
+            0,
+            "file should not be executable before apply"
+        );
+        GitRepo::discover(tmp.path())
+            .unwrap()
+            .apply_patch(&patch)
+            .unwrap();
+        assert_ne!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o111,
+            0,
+            "file should be executable after apply"
+        );
+    }
+
+    #[test]
+    fn apply_patch_returns_error_when_context_does_not_match() {
+        let tmp = tempdir().unwrap();
+        git_init_commit(tmp.path(), &[("f.txt", "hello\n")]);
+        // Patch whose context line ("no such line") doesn't exist in the file.
+        let bad_patch = concat!(
+            "diff --git a/f.txt b/f.txt\n",
+            "--- a/f.txt\n",
+            "+++ b/f.txt\n",
+            "@@ -1 +1 @@\n",
+            "-no such line\n",
+            "+replacement\n",
+        );
+        let err = GitRepo::discover(tmp.path())
+            .unwrap()
+            .apply_patch(bad_patch)
+            .unwrap_err();
+        assert!(
+            err.downcast_ref::<GitInvocationError>().is_some(),
+            "expected GitInvocationError, got: {err}"
+        );
+    }
+}
