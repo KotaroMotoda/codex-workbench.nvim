@@ -35,12 +35,16 @@ describe("commands", function()
 
     -- Stub bridge: initialize succeeds synchronously, request captures calls.
     bridge.initialize = function(_, cb)
-      if cb then cb({ ok = true, result = {} }) end
+      if cb then
+        cb({ ok = true, result = {} })
+      end
     end
     bridge.request = function(method, params, cb)
       captured_method = method
       captured_params = params
-      if cb then cb({ ok = true, result = {} }) end
+      if cb then
+        cb({ ok = true, result = {} })
+      end
     end
 
     commands.register(make_opts())

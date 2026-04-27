@@ -33,10 +33,11 @@ describe("error_codes.messages", function()
 
   for _, code in ipairs(all_codes) do
     it("has a string message for " .. code, function()
-      assert.is_string(error_codes.messages[code],
-        "messages[" .. code .. "] should be a string, got: " .. type(error_codes.messages[code]))
-      assert.is_true(#error_codes.messages[code] > 0,
-        "messages[" .. code .. "] must not be empty")
+      assert.is_string(
+        error_codes.messages[code],
+        "messages[" .. code .. "] should be a string, got: " .. type(error_codes.messages[code])
+      )
+      assert.is_true(#error_codes.messages[code] > 0, "messages[" .. code .. "] must not be empty")
     end)
   end
 end)

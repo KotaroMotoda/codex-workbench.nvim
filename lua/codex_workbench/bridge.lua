@@ -44,7 +44,9 @@ local function executable(opts)
     table.sort(matches, function(x, y)
       local vx, vy = semver(x), semver(y)
       for i = 1, 3 do
-        if vx[i] ~= vy[i] then return vx[i] < vy[i] end
+        if vx[i] ~= vy[i] then
+          return vx[i] < vy[i]
+        end
       end
       return false
     end)
@@ -70,11 +72,7 @@ local function notify_error(payload)
   log.write("ERROR", "bridge_error", payload)
   local message = error_codes.format(payload)
   vim.schedule(function()
-    vim.notify(
-      message .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
+    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
   end)
 end
 
@@ -97,7 +95,7 @@ local function handle_event(message)
     M.state.thread_id = message.thread_id or M.state.thread_id
   elseif message.event == "turn_completed" then
     M.state.phase = "ready"
-    output.finish_turn(message)
+    output.finish_turn()
   elseif message.event == "thread_started" then
     M.state.thread_id = message.thread_id or M.state.thread_id
   elseif message.event == "output_delta" then
@@ -239,14 +237,20 @@ function M.start(opts)
         log_warn(M.stderr_pending)
         M.stderr_pending = ""
       end
-      -- Flush any in-flight request callbacks so callers don't hang forever.
-      -- Deliver a synthetic crash error rather than leaving them pending.
+      -- Flush all in-flight callbacks so callers never hang waiting for a
+      -- response that will never arrive.
       local crashed = { ok = false, error_code = "app_server_crashed" }
       for _, cb in pairs(M.callbacks) do
         pcall(cb, crashed)
       end
       M.callbacks = {}
       M.next_id = 1
+      -- Also flush init_callbacks: if the bridge crashes mid-initialization,
+      -- callers of M.initialize() would otherwise wait forever.
+      for _, cb in ipairs(M.init_callbacks) do
+        pcall(cb, crashed)
+      end
+      M.init_callbacks = {}
       M.job_id = nil
       M.initializing = false
       M.state.initialized = false
@@ -326,6 +330,13 @@ end
 function M.request(method, params, callback)
   if not M.job_id then
     notify_error({ code = "not_initialized" })
+    -- Schedule an error delivery to the callback so callers never hang waiting
+    -- for a response that will never arrive.
+    if callback then
+      vim.schedule(function()
+        callback({ ok = false, error_code = "not_initialized" })
+      end)
+    end
     return
   end
 

@@ -44,9 +44,12 @@ local function file_contents(path)
   return table.concat(lines, "\n")
 end
 
+---@param prompt string
+---@param opts CodexWorkbenchOpts|{}
+---@return string
 function M.resolve(prompt, opts)
   opts = opts or {}
-  local enabled = ((opts.contexts or {}).enabled) or {}
+  local enabled = (opts.contexts or {}).enabled or {}
   local file = vim.api.nvim_buf_get_name(0)
   local replacements = {
     ["@this"] = enabled.this == false and "@this" or (file .. ":" .. vim.fn.line(".")),
@@ -72,4 +75,3 @@ function M.resolve(prompt, opts)
 end
 
 return M
-

@@ -31,10 +31,7 @@ do
     "shadow_unavailable",
   }
   for _, code in ipairs(expected) do
-    assert(
-      type(error_codes.messages[code]) == "string",
-      "error_codes.messages missing entry for " .. code
-    )
+    assert(type(error_codes.messages[code]) == "string", "error_codes.messages missing entry for " .. code)
   end
 
   local localized = error_codes.format({ ok = false, error_code = "patch_apply_failed", error = "raw" })

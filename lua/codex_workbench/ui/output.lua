@@ -8,6 +8,7 @@ local M = {
   streamed_text = "",
 }
 
+---@param opts CodexWorkbenchOutputOpts|{}
 function M.configure(opts)
   M.opts = vim.tbl_deep_extend("force", M.opts, opts or {})
 end
@@ -19,19 +20,27 @@ local function set_modifiable(value)
 end
 
 local function ensure_window()
-  if M.win and vim.api.nvim_win_is_valid(M.win) then
+  local win_ok = M.win ~= nil and vim.api.nvim_win_is_valid(M.win)
+  local buf_ok = M.buf ~= nil and vim.api.nvim_buf_is_valid(M.buf)
+  -- bufhidden=hide keeps M.buf valid even when the window shows another buffer,
+  -- so also verify the buffer is actually attached to the window.
+  local attached = win_ok and buf_ok and vim.api.nvim_win_get_buf(M.win) == M.buf
+
+  if attached then
     return
   end
 
-  local size = tonumber(M.opts.size) or 40
-  if M.opts.position == "bottom" then
-    vim.cmd("botright " .. size .. "new")
-  else
-    vim.cmd("botright vertical " .. size .. "new")
+  if not win_ok then
+    local size = tonumber(M.opts.size) or 40
+    if M.opts.position == "bottom" then
+      vim.cmd("botright " .. size .. "new")
+    else
+      vim.cmd("botright vertical " .. size .. "new")
+    end
+    M.win = vim.api.nvim_get_current_win()
   end
 
-  M.win = vim.api.nvim_get_current_win()
-  if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
+  if not buf_ok then
     M.buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_name(M.buf, "codex-workbench-output")
     vim.bo[M.buf].buftype = "nofile"
@@ -40,10 +49,13 @@ local function ensure_window()
     vim.bo[M.buf].filetype = "markdown"
     vim.bo[M.buf].modifiable = false
   end
+
   vim.api.nvim_win_set_buf(M.win, M.buf)
-  vim.wo[M.win].wrap = true
-  vim.wo[M.win].number = false
-  vim.wo[M.win].relativenumber = false
+  if not win_ok then
+    vim.wo[M.win].wrap = true
+    vim.wo[M.win].number = false
+    vim.wo[M.win].relativenumber = false
+  end
 end
 
 local function set_lines(lines)
@@ -88,6 +100,7 @@ function M.finish_turn()
   append_to_last("\n")
 end
 
+---@param message string
 function M.show_error(message)
   set_lines({
     "# Codex",
@@ -101,11 +114,13 @@ function M.show_error(message)
   })
 end
 
+---@param text string
 function M.append(text)
   M.streamed_text = M.streamed_text .. text
   append_to_last(text)
 end
 
+---@param text string
 function M.set_final(text)
   if text == "" or text == M.final_text then
     return
@@ -127,10 +142,13 @@ function M.set_final(text)
   end
 end
 
+---@param diff string
 function M.set_diff_preview(diff)
   M.diff_preview = diff
 end
 
+---@param method string
+---@param params any
 function M.handle_appserver_event(method, params)
   if method == "item/agentMessage/delta" then
     return
