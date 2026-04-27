@@ -89,7 +89,10 @@ mod tests {
         };
         let classified = classify(anyhow::Error::new(invocation));
         match classified {
-            BridgeError::GitFailed { command, stderr_tail } => {
+            BridgeError::GitFailed {
+                command,
+                stderr_tail,
+            } => {
                 assert_eq!(command, "apply");
                 assert_eq!(stderr_tail, "patch failed");
             }

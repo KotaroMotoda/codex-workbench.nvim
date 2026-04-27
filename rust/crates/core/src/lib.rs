@@ -6,5 +6,6 @@ pub mod review;
 pub mod shadow;
 pub mod state;
 
+pub use app_server::AppServer;
 pub use errors::classify;
 pub use manager::{EventSink, Manager};

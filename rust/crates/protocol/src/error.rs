@@ -29,10 +29,7 @@ pub enum BridgeError {
     },
 
     #[error("failed to apply review patch")]
-    PatchApplyFailed {
-        scope: String,
-        stderr_tail: String,
-    },
+    PatchApplyFailed { scope: String, stderr_tail: String },
 
     #[error("review scope is invalid: {reason}")]
     ScopeInvalid { scope: String, reason: String },
@@ -75,7 +72,6 @@ pub enum BridgeError {
     Internal { message: String },
 
     // ── Phase 2: idempotency / crash-safety ──────────────────────────────────
-
     #[error("state file is unavailable: {path}")]
     StateUnavailable { path: String, reason: String },
 
@@ -117,12 +113,17 @@ impl BridgeError {
     /// Structured payload for `details`. Omits secrets and large blobs.
     pub fn details(&self) -> Value {
         match self {
-            Self::NotInitialized | Self::NoPendingReview | Self::ReviewPending
+            Self::NotInitialized
+            | Self::NoPendingReview
+            | Self::ReviewPending
             | Self::RealWorkspaceChanged => Value::Null,
             Self::InvalidRequest { message } => json!({ "message": message }),
             Self::UnknownMethod { method } => json!({ "method": method }),
             Self::NotAGitRepository { workspace } => json!({ "workspace": workspace }),
-            Self::GitFailed { command, stderr_tail } => {
+            Self::GitFailed {
+                command,
+                stderr_tail,
+            } => {
                 json!({ "command": command, "stderr_tail": stderr_tail })
             }
             Self::PatchApplyFailed { scope, stderr_tail } => {
@@ -138,7 +139,11 @@ impl BridgeError {
             Self::AppServerCrashed { stderr_tail } => {
                 json!({ "stderr_tail": stderr_tail })
             }
-            Self::AppServerError { method, code, message } => {
+            Self::AppServerError {
+                method,
+                code,
+                message,
+            } => {
                 json!({ "method": method, "code": code, "message": message })
             }
             Self::TurnFailed { turn_id, message } => {
@@ -163,13 +168,17 @@ impl BridgeError {
 
 impl From<std::io::Error> for BridgeError {
     fn from(value: std::io::Error) -> Self {
-        BridgeError::Io { message: value.to_string() }
+        BridgeError::Io {
+            message: value.to_string(),
+        }
     }
 }
 
 impl From<serde_json::Error> for BridgeError {
     fn from(value: serde_json::Error) -> Self {
-        BridgeError::InvalidRequest { message: value.to_string() }
+        BridgeError::InvalidRequest {
+            message: value.to_string(),
+        }
     }
 }
 
@@ -191,7 +200,11 @@ pub struct ErrorPayload {
 impl ErrorPayload {
     pub fn from_bridge_error(error: &BridgeError) -> Self {
         let details = error.details();
-        let details = if details.is_null() { None } else { Some(details) };
+        let details = if details.is_null() {
+            None
+        } else {
+            Some(details)
+        };
         Self {
             code: error.code().to_string(),
             message: error.to_string(),
@@ -245,9 +258,15 @@ mod tests {
         // added in the future.
         let codes = [
             BridgeError::NotInitialized.code(),
-            BridgeError::InvalidRequest { message: "x".into() }.code(),
+            BridgeError::InvalidRequest {
+                message: "x".into(),
+            }
+            .code(),
             BridgeError::UnknownMethod { method: "x".into() }.code(),
-            BridgeError::NotAGitRepository { workspace: "x".into() }.code(),
+            BridgeError::NotAGitRepository {
+                workspace: "x".into(),
+            }
+            .code(),
             BridgeError::GitFailed {
                 command: "x".into(),
                 stderr_tail: "".into(),
@@ -272,7 +291,10 @@ mod tests {
             BridgeError::NoPendingReview.code(),
             BridgeError::ReviewPending.code(),
             BridgeError::RealWorkspaceChanged.code(),
-            BridgeError::AppServerCrashed { stderr_tail: "".into() }.code(),
+            BridgeError::AppServerCrashed {
+                stderr_tail: "".into(),
+            }
+            .code(),
             BridgeError::AppServerError {
                 method: "x".into(),
                 code: None,
@@ -285,8 +307,14 @@ mod tests {
             }
             .code(),
             BridgeError::NoThread { action: "x".into() }.code(),
-            BridgeError::Io { message: "x".into() }.code(),
-            BridgeError::Internal { message: "x".into() }.code(),
+            BridgeError::Io {
+                message: "x".into(),
+            }
+            .code(),
+            BridgeError::Internal {
+                message: "x".into(),
+            }
+            .code(),
             BridgeError::StateUnavailable {
                 path: "x".into(),
                 reason: "y".into(),

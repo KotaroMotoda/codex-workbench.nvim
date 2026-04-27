@@ -176,11 +176,13 @@ mod tests {
         let path = tmp.path().join("state.json");
 
         // Save a valid state.
-        let mut state = SessionState::default();
-        state.workspace = "/test/workspace".to_string();
+        let mut state = SessionState {
+            workspace: "/test/workspace".to_string(),
+            ..Default::default()
+        };
         state.save(&path).unwrap();
         assert!(path.exists());
-        assert!(bak_path(&path).exists() == false); // no bak on first write
+        assert!(!bak_path(&path).exists()); // no bak on first write
 
         // Save again — this time a .bak should appear.
         state.thread_id = Some("t1".into());

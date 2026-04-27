@@ -12,6 +12,27 @@ use serde_json::{json, Value};
 
 use crate::manager::EventSink;
 
+/// Abstraction over the Codex app-server connection.
+///
+/// The trait exists primarily to enable dependency injection in tests:
+/// integration tests can substitute a `MockAppServer` that records calls and
+/// returns pre-configured results, eliminating the need for a live Codex binary.
+pub trait AppServer {
+    fn thread_id(&self) -> Option<&str>;
+    fn set_thread_id(&mut self, thread_id: Option<String>);
+    fn start_thread(&mut self, cwd: &Path) -> Result<String>;
+    fn list_threads(&mut self, cwd: &[String]) -> Result<Value>;
+    fn resume_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String>;
+    fn fork_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String>;
+    fn run_turn(
+        &mut self,
+        prompt: &str,
+        cwd: &Path,
+        bridge_rx: &Receiver<BridgeRequest>,
+        sink: &mut dyn EventSink,
+    ) -> Result<String>;
+}
+
 pub struct AppServerClient {
     child: Child,
     stdin: ChildStdin,
@@ -372,6 +393,42 @@ impl AppServerClient {
             (None, false) => trimmed,
             (None, true) => String::new(),
         }
+    }
+}
+
+impl AppServer for AppServerClient {
+    fn thread_id(&self) -> Option<&str> {
+        AppServerClient::thread_id(self)
+    }
+
+    fn set_thread_id(&mut self, thread_id: Option<String>) {
+        AppServerClient::set_thread_id(self, thread_id);
+    }
+
+    fn start_thread(&mut self, cwd: &Path) -> Result<String> {
+        AppServerClient::start_thread(self, cwd)
+    }
+
+    fn list_threads(&mut self, cwd: &[String]) -> Result<Value> {
+        AppServerClient::list_threads(self, cwd)
+    }
+
+    fn resume_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String> {
+        AppServerClient::resume_thread(self, thread_id, cwd)
+    }
+
+    fn fork_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String> {
+        AppServerClient::fork_thread(self, thread_id, cwd)
+    }
+
+    fn run_turn(
+        &mut self,
+        prompt: &str,
+        cwd: &Path,
+        bridge_rx: &Receiver<BridgeRequest>,
+        sink: &mut dyn EventSink,
+    ) -> Result<String> {
+        AppServerClient::run_turn(self, prompt, cwd, bridge_rx, sink)
     }
 }
 

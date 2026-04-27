@@ -1,0 +1,37 @@
+[package]
+name = "codex-workbench-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+codex-workbench-core = { path = "../crates/core" }
+codex-workbench-protocol = { path = "../crates/protocol" }
+
+# Prevent this from being a workspace member.
+[workspace]
+
+[[bin]]
+name = "fuzz_files_from_patch"
+path = "fuzz_targets/fuzz_files_from_patch.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
+name = "fuzz_patch_for_scope"
+path = "fuzz_targets/fuzz_patch_for_scope.rs"
+test = false
+bench = false
+doc = false
+
+[[bin]]
+name = "fuzz_error_classify"
+path = "fuzz_targets/fuzz_error_classify.rs"
+test = false
+bench = false
+doc = false

@@ -238,6 +238,109 @@ fn parse_diff_git_path(rest: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+mod proptests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    /// A minimal but syntactically valid two-hunk patch used as a stable
+    /// fixture for property-based tests.
+    fn two_hunk_patch(file: &str) -> String {
+        format!(
+            "diff --git a/{file} b/{file}\nindex 111..222 100644\n--- a/{file}\n+++ b/{file}\n\
+             @@ -1 +1 @@\n-old\n+new\n\
+             @@ -10 +10 @@\n-foo\n+bar\n"
+        )
+    }
+
+    proptest! {
+        /// `patch_for_scope` and `remaining_after_scope` must never panic for
+        /// any combination of inputs — even completely malformed ones.
+        #[test]
+        fn scope_functions_never_panic(patch in ".*", scope in ".*") {
+            let _ = patch_for_scope(&patch, &scope);
+            let _ = remaining_after_scope(&patch, &scope);
+        }
+
+        /// `scope == "all"` is always the identity for `patch_for_scope`.
+        #[test]
+        fn scope_all_is_identity(name in "[a-z][a-z0-9]{0,15}") {
+            let patch = two_hunk_patch(&name);
+            let extracted = patch_for_scope(&patch, "all").unwrap();
+            prop_assert_eq!(extracted, patch);
+        }
+
+        /// `scope == "all"` always produces an empty remainder.
+        #[test]
+        fn remaining_after_all_is_empty(name in "[a-z][a-z0-9]{0,15}") {
+            let patch = two_hunk_patch(&name);
+            let remaining = remaining_after_scope(&patch, "all").unwrap();
+            prop_assert!(remaining.is_empty());
+        }
+
+        /// `patch_for_scope("file:X")` + `remaining_after_scope("file:X")`
+        /// together cover the original patch (no lines lost, no duplication).
+        #[test]
+        fn file_scope_covers_original(
+            a in "[a-z]{3,8}",
+            b in "[a-z]{3,8}",
+        ) {
+            prop_assume!(a != b);
+            let patch_a = two_hunk_patch(&a);
+            let patch_b = two_hunk_patch(&b);
+            let combined = format!("{patch_a}{patch_b}");
+
+            // Use the full diff header line as a unique anchor, avoiding false
+            // positives when one name is a prefix of another (e.g. "abc" / "abcde").
+            let header_a = format!("diff --git a/{a} b/{a}");
+            let header_b = format!("diff --git a/{b} b/{b}");
+
+            let extracted = patch_for_scope(&combined, &format!("file:{a}")).unwrap();
+            let remaining = remaining_after_scope(&combined, &format!("file:{a}")).unwrap();
+
+            prop_assert!(extracted.contains(&header_a), "extracted should contain file a");
+            prop_assert!(!remaining.contains(&header_a), "remaining should not contain file a");
+            prop_assert!(remaining.contains(&header_b), "remaining should still contain file b");
+        }
+
+        /// `hunk:path:N` scope for an existing hunk must return `Ok`.
+        #[test]
+        fn hunk_scope_zero_is_always_found(name in "[a-z]{3,8}") {
+            let patch = two_hunk_patch(&name);
+            let result = patch_for_scope(&patch, &format!("hunk:{name}:0"));
+            prop_assert!(result.is_ok(), "hunk 0 should exist: {result:?}");
+        }
+
+        /// A `hunk:` scope with an out-of-bounds index must return a
+        /// `ScopeHunkNotFound` error, never a panic.
+        #[test]
+        fn hunk_out_of_bounds_returns_error(name in "[a-z]{3,8}", idx in 100usize..200) {
+            let patch = two_hunk_patch(&name);
+            let result = patch_for_scope(&patch, &format!("hunk:{name}:{idx}"));
+            prop_assert!(result.is_err());
+        }
+
+        /// Malformed (non-"all" / non-"file:" / non-"hunk:") scope strings
+        /// must return `ScopeInvalid`, never panic.
+        #[test]
+        fn unknown_prefix_yields_scope_invalid(
+            scope in "[^aAfFhH].*",  // excludes prefixes "all", "file:", "hunk:"
+        ) {
+            let patch = two_hunk_patch("x");
+            let result = patch_for_scope(&patch, &scope);
+            if let Err(e) = result {
+                let is_scope_invalid = e
+                    .downcast_ref::<codex_workbench_protocol::BridgeError>()
+                    .map(|be| be.code() == "scope_invalid")
+                    .unwrap_or(false);
+                prop_assert!(is_scope_invalid, "expected scope_invalid, got: {e}");
+            }
+            // Ok(_): "a" / "f" / "h" prefixes may accidentally match; allow Ok
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

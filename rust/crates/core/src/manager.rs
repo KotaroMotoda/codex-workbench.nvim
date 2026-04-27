@@ -12,11 +12,13 @@ use fs2::FileExt as _;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::app_server::AppServerClient;
+use crate::app_server::{AppServer, AppServerClient};
 use crate::git::{GitInvocationError, GitRepo};
 use crate::review::{files_from_patch, patch_for_scope, remaining_after_scope};
 use crate::shadow::ShadowWorkspace;
-use crate::state::{now_unix, state_file, ApplyStage, PendingApply, ReviewItem, ReviewStatus, SessionState};
+use crate::state::{
+    now_unix, state_file, ApplyStage, PendingApply, ReviewItem, ReviewStatus, SessionState,
+};
 
 pub trait EventSink {
     fn emit(&mut self, event: BridgeEvent);
@@ -35,7 +37,7 @@ pub struct Manager {
     shadow: Option<ShadowWorkspace>,
     state: SessionState,
     state_path: Option<PathBuf>,
-    app_server: Option<AppServerClient>,
+    app_server: Option<Box<dyn AppServer>>,
     /// Exclusive lock file held for the lifetime of this Manager instance.
     /// Dropping the Manager automatically releases the lock.
     _lock: Option<File>,
@@ -58,6 +60,17 @@ impl Manager {
             app_server: None,
             _lock: None,
         }
+    }
+
+    /// Inject a custom [`AppServer`] implementation before the first `ask` /
+    /// `threads` call. Used in integration tests to avoid spawning a real Codex
+    /// process; also useful for diagnostics in production.
+    pub fn inject_app_server(&mut self, app: Box<dyn AppServer>) {
+        debug_assert!(
+            self.app_server.is_none(),
+            "inject_app_server must be called before the first ask/threads call"
+        );
+        self.app_server = Some(app);
     }
 
     pub fn handle(
@@ -186,11 +199,11 @@ impl Manager {
         self.ensure_app_server()?;
         if params.new_thread {
             self.state.thread_id = None;
-            self.app_server.as_mut().unwrap().set_thread_id(None);
+            self.app_server.as_deref_mut().unwrap().set_thread_id(None);
         } else if let Some(thread_id) = params.thread_id.as_deref().filter(|id| !id.is_empty()) {
             let resumed = self
                 .app_server
-                .as_mut()
+                .as_deref_mut()
                 .unwrap()
                 .resume_thread(thread_id, &shadow.shadow_path)?;
             self.state.thread_id = Some(resumed);
@@ -198,25 +211,21 @@ impl Manager {
         } else if let Some(thread_id) = self.state.thread_id.clone() {
             let resumed = self
                 .app_server
-                .as_mut()
+                .as_deref_mut()
                 .unwrap()
                 .resume_thread(&thread_id, &shadow.shadow_path)?;
             self.state.thread_id = Some(resumed);
             self.save_state()?;
         }
 
-        let turn_id = self.app_server.as_mut().unwrap().run_turn(
+        let turn_id = self.app_server.as_deref_mut().unwrap().run_turn(
             &params.prompt,
             &shadow.shadow_path,
             bridge_rx,
             sink,
         )?;
 
-        if let Some(thread_id) = self
-            .app_server
-            .as_ref()
-            .and_then(AppServerClient::thread_id)
-        {
+        if let Some(thread_id) = self.app_server.as_deref().and_then(|app| app.thread_id()) {
             self.state.thread_id = Some(thread_id.to_string());
         }
 
@@ -413,7 +422,11 @@ impl Manager {
             .and_then(Value::as_str)
             .map(str::to_string)
             .or_else(|| self.state.thread_id.clone())
-            .ok_or_else(|| anyhow!(BridgeError::NoThread { action: "resume".into() }))?;
+            .ok_or_else(|| {
+                anyhow!(BridgeError::NoThread {
+                    action: "resume".into()
+                })
+            })?;
         let shadow_path = self.shadow()?.shadow_path.clone();
         let app = self.app_server()?;
         let resumed = if app.thread_id() == Some(thread_id.as_str()) {
@@ -427,11 +440,11 @@ impl Manager {
     }
 
     fn fork(&mut self) -> Result<Value> {
-        let source = self
-            .state
-            .thread_id
-            .clone()
-            .ok_or_else(|| anyhow!(BridgeError::NoThread { action: "fork".into() }))?;
+        let source = self.state.thread_id.clone().ok_or_else(|| {
+            anyhow!(BridgeError::NoThread {
+                action: "fork".into()
+            })
+        })?;
         if self.state.pending_review().is_some() {
             self.abandon_pending_review()?;
         }
@@ -546,15 +559,15 @@ impl Manager {
         self.state.save(path)
     }
 
-    fn app_server(&mut self) -> Result<&mut AppServerClient> {
+    fn app_server(&mut self) -> Result<&mut dyn AppServer> {
         self.ensure_app_server()?;
-        Ok(self.app_server.as_mut().unwrap())
+        Ok(self.app_server.as_deref_mut().unwrap())
     }
 
     fn ensure_app_server(&mut self) -> Result<()> {
         if self.app_server.is_none() {
             let codex_cmd = self.config()?.codex_cmd.clone();
-            self.app_server = Some(AppServerClient::spawn(&codex_cmd)?);
+            self.app_server = Some(Box::new(AppServerClient::spawn(&codex_cmd)?));
         }
         Ok(())
     }
@@ -589,6 +602,7 @@ fn acquire_workspace_lock(lock_path: &std::path::Path) -> Result<File> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(lock_path)?;
 
     if file.try_lock_exclusive().is_ok() {
