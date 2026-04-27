@@ -86,4 +86,37 @@ describe("context.resolve", function()
     assert.is_not_nil(result:find("line 1"), "should contain buffer content")
     assert.is_not_nil(result:find("end"), "should preserve surrounding text")
   end)
+
+  describe("@changes", function()
+    local original_system
+
+    before_each(function()
+      original_system = vim.system
+    end)
+
+    after_each(function()
+      vim.system = original_system
+    end)
+
+    it("replaces @changes with git diff stdout", function()
+      vim.system = function(_, _)
+        return { wait = function() return { code = 0, stdout = "diff output" } end }
+      end
+      local result = context.resolve("@changes", {})
+      assert.equals("diff output", result)
+    end)
+
+    it("resolves @changes to empty string on timeout (pcall error)", function()
+      vim.system = function(_, _)
+        return { wait = function() error("timeout") end }
+      end
+      local result = context.resolve("@changes", {})
+      assert.equals("", result)
+    end)
+
+    it("does not replace @changes when disabled", function()
+      local result = context.resolve("@changes", { contexts = { enabled = { changes = false } } })
+      assert.equals("@changes", result)
+    end)
+  end)
 end)

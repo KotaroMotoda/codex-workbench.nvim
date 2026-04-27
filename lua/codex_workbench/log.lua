@@ -4,31 +4,26 @@ local function path()
   return vim.fn.stdpath("state") .. "/codex-workbench/workbench.log"
 end
 
-local function stringify(value)
-  if type(value) == "string" then
-    return value
-  end
-  local ok, encoded = pcall(vim.json.encode, value)
-  if ok then
-    return encoded
-  end
-  return vim.inspect(value)
-end
-
+---@return string
 function M.path()
   return path()
 end
 
-function M.write(level, message, details)
+---@param level string
+---@param code string
+---@param details any
+function M.write(level, code, details)
   local file = path()
   vim.fn.mkdir(vim.fn.fnamemodify(file, ":h"), "p")
-  local lines = {
-    string.format("[%s] %s %s", os.date("%Y-%m-%dT%H:%M:%S%z"), level, message),
-  }
+  local entry = { ts = os.date("!%Y-%m-%dT%H:%M:%SZ"), level = level, code = code }
   if details ~= nil then
-    table.insert(lines, stringify(details))
+    entry.details = details
   end
-  vim.fn.writefile(lines, file, "a")
+  local ok, line = pcall(vim.json.encode, entry)
+  if not ok then
+    line = vim.json.encode({ ts = entry.ts, level = level, code = code })
+  end
+  vim.fn.writefile({ line }, file, "a")
 end
 
 function M.open()
@@ -37,7 +32,43 @@ function M.open()
   if vim.fn.filereadable(file) == 0 then
     vim.fn.writefile({}, file)
   end
-  vim.cmd("botright split " .. vim.fn.fnameescape(file))
+
+  -- Render JSONL entries into a human-readable scratch buffer.
+  local raw_lines = vim.fn.readfile(file)
+  local pretty = {}
+  for _, line in ipairs(raw_lines) do
+    if line ~= "" then
+      local ok, entry = pcall(vim.json.decode, line)
+      if ok and type(entry) == "table" then
+        local details_str = ""
+        if entry.details ~= nil then
+          if type(entry.details) == "string" then
+            details_str = " " .. entry.details
+          else
+            local enc_ok, enc = pcall(vim.json.encode, entry.details)
+            details_str = " " .. (enc_ok and enc or vim.inspect(entry.details))
+          end
+        end
+        table.insert(
+          pretty,
+          string.format("[%s] %s %s%s", entry.ts or "?", entry.level or "?", entry.code or "?", details_str)
+        )
+      else
+        table.insert(pretty, line)
+      end
+    end
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].filetype = "log"
+  vim.api.nvim_buf_set_name(buf, "codex-workbench://log")
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, pretty)
+  vim.bo[buf].modifiable = false
+  vim.cmd("botright split")
+  vim.api.nvim_win_set_buf(0, buf)
 end
 
 return M

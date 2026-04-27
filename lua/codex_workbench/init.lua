@@ -1,5 +1,7 @@
 local M = {}
 
+---@param opts table|nil
+---@return table
 function M.setup(opts)
   M.opts = require("codex_workbench.config").setup(opts)
   require("codex_workbench.commands").register(M.opts)
@@ -9,6 +11,7 @@ function M.setup(opts)
   return M
 end
 
+---@param prompt string|nil
 function M.ask(prompt)
   M.opts = M.opts or require("codex_workbench.config").setup({})
   local bridge = require("codex_workbench.bridge")
@@ -41,6 +44,7 @@ function M.ask(prompt)
   end)
 end
 
+---@return string
 function M.statusline()
   return require("codex_workbench.ui.statusline").component()
 end

@@ -26,7 +26,12 @@ local function changes()
   if file == "" then
     return ""
   end
-  local result = vim.system({ "git", "diff", "--", file }, { text = true }):wait()
+  local ok, result = pcall(function()
+    return vim.system({ "git", "diff", "--", file }, { text = true, timeout = 2000 }):wait()
+  end)
+  if not ok or type(result) ~= "table" then
+    return ""
+  end
   return result.stdout or ""
 end
 
