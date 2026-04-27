@@ -81,7 +81,9 @@ describe("bridge", function()
       bridge.start({ binary = { path = "fake-bridge" } })
 
       local received = nil
-      bridge.callbacks[1] = function(resp) received = resp end
+      bridge.callbacks[1] = function(resp)
+        received = resp
+      end
 
       -- Exit code 0: graceful, suppresses notify_error.
       assert.is_not_nil(captured_callbacks)
@@ -127,7 +129,9 @@ describe("bridge", function()
   describe("request", function()
     it("does not send when job_id is nil", function()
       local sent = false
-      vim.fn.chansend = function(_, _) sent = true end
+      vim.fn.chansend = function(_, _)
+        sent = true
+      end
 
       bridge.request("status", {})
 
@@ -136,10 +140,14 @@ describe("bridge", function()
 
     it("delivers not_initialized error to callback when job_id is nil", function()
       local received = nil
-      bridge.request("status", {}, function(resp) received = resp end)
+      bridge.request("status", {}, function(resp)
+        received = resp
+      end)
 
       -- callback is delivered via vim.schedule; flush it synchronously.
-      vim.wait(100, function() return received ~= nil end)
+      vim.wait(100, function()
+        return received ~= nil
+      end)
 
       assert.is_not_nil(received)
       assert.is_false(received.ok)
@@ -149,7 +157,9 @@ describe("bridge", function()
     it("sends JSONL-encoded payload when job is running", function()
       bridge.start({ binary = { path = "fake-bridge" } })
       local sent_data = nil
-      vim.fn.chansend = function(_, data) sent_data = data end
+      vim.fn.chansend = function(_, data)
+        sent_data = data
+      end
 
       bridge.request("status", { key = "val" })
 

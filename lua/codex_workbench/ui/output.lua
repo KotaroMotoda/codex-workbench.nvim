@@ -22,8 +22,11 @@ end
 local function ensure_window()
   local win_ok = M.win ~= nil and vim.api.nvim_win_is_valid(M.win)
   local buf_ok = M.buf ~= nil and vim.api.nvim_buf_is_valid(M.buf)
+  -- bufhidden=hide keeps M.buf valid even when the window shows another buffer,
+  -- so also verify the buffer is actually attached to the window.
+  local attached = win_ok and buf_ok and vim.api.nvim_win_get_buf(M.win) == M.buf
 
-  if win_ok and buf_ok then
+  if attached then
     return
   end
 

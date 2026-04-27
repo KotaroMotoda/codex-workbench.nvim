@@ -330,7 +330,7 @@ end
 function M.request(method, params, callback)
   if not M.job_id then
     notify_error({ code = "not_initialized" })
-    -- Deliver a synchronous error to the callback so callers never hang waiting
+    -- Schedule an error delivery to the callback so callers never hang waiting
     -- for a response that will never arrive.
     if callback then
       vim.schedule(function()
