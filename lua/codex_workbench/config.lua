@@ -18,6 +18,8 @@ local M = {}
 ---@class CodexWorkbenchProgressOpts
 ---@field enabled boolean Show progress toast (default: true)
 ---@field position "bottom_right"|"top_right"|"off" Progress toast position (default: "bottom_right")
+---@field ascii_only boolean Use ASCII spinner frames (default: false)
+---@field fade_ms integer Milliseconds to keep done/error messages visible (default: 1500)
 
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
@@ -61,6 +63,8 @@ M.defaults = {
     progress = {
       enabled = true,
       position = "bottom_right",
+      ascii_only = false,
+      fade_ms = 1500,
     },
   },
   errors = {
