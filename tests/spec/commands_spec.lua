@@ -114,6 +114,7 @@ describe("commands", function()
       "CodexWorkbenchAbandon",
       "CodexWorkbenchResume",
       "CodexWorkbenchFork",
+      "CodexWorkbenchPalette",
       "CodexWorkbenchStatus",
       "CodexWorkbenchToggleDetails",
       "CodexWorkbenchLogs",

@@ -113,6 +113,16 @@ pub struct AskParams {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct RecentPromptsParams {
+    #[serde(default = "default_recent_prompts_limit")]
+    pub limit: u32,
+}
+
+fn default_recent_prompts_limit() -> u32 {
+    50
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScopeParams {
     #[serde(default = "default_scope")]
     pub scope: String,

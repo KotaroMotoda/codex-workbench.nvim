@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -71,9 +72,13 @@ pub struct SessionState {
     /// A non-None value after restart means the previous run crashed mid-apply.
     #[serde(default)]
     pub pending_apply: Option<PendingApply>,
+    #[serde(default)]
+    pub recent_prompts: VecDeque<String>,
 }
 
 impl SessionState {
+    pub const MAX_RECENT_PROMPTS: usize = 100;
+
     /// Load state from `path`. On parse failure tries `path.bak`; if that also
     /// fails returns `Err(BridgeError::StateUnavailable)`.
     pub fn load(path: &Path) -> Result<Self> {
@@ -145,6 +150,26 @@ impl SessionState {
             .rev()
             .find(|review| review.status == ReviewStatus::Pending)
     }
+
+    pub fn push_recent_prompt(&mut self, prompt: impl Into<String>) {
+        let prompt = prompt.into();
+        if prompt.trim().is_empty() {
+            return;
+        }
+        self.recent_prompts.retain(|existing| existing != &prompt);
+        self.recent_prompts.push_front(prompt);
+        while self.recent_prompts.len() > Self::MAX_RECENT_PROMPTS {
+            self.recent_prompts.pop_back();
+        }
+    }
+
+    pub fn recent_prompts(&self, limit: usize) -> Vec<String> {
+        self.recent_prompts
+            .iter()
+            .take(limit.min(Self::MAX_RECENT_PROMPTS))
+            .cloned()
+            .collect()
+    }
 }
 
 pub fn state_file(state_dir: &Path) -> PathBuf {
@@ -213,5 +238,29 @@ mod tests {
             "expected StateUnavailable, got {:?}",
             bridge_err
         );
+    }
+
+    #[test]
+    fn recent_prompts_are_deduped_capped_and_serializable() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("state.json");
+        let mut state = SessionState::default();
+
+        for index in 0..105 {
+            state.push_recent_prompt(format!("prompt-{index}"));
+        }
+        state.push_recent_prompt("prompt-100");
+        state.push_recent_prompt("   ");
+
+        assert_eq!(state.recent_prompts.len(), SessionState::MAX_RECENT_PROMPTS);
+        assert_eq!(
+            state.recent_prompts(1).first().map(String::as_str),
+            Some("prompt-100")
+        );
+        assert_eq!(state.recent_prompts(2), vec!["prompt-100", "prompt-104"]);
+
+        state.save(&path).unwrap();
+        let loaded = SessionState::load(&path).unwrap();
+        assert_eq!(loaded.recent_prompts(2), vec!["prompt-100", "prompt-104"]);
     }
 }

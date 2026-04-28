@@ -22,6 +22,16 @@ local M = {}
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
 
+---@class CodexWorkbenchPaletteHistoryOpts
+---@field enabled boolean Include recent prompts from the bridge state (default: true)
+---@field limit integer Maximum prompt history entries to show (default: 50)
+
+---@class CodexWorkbenchPaletteOpts
+---@field enabled boolean Enable palette command/keymap (default: true)
+---@field keymap string|false Normal-mode keymap for the palette (default: "<leader>cp")
+---@field templates table[] User slash prompt templates; matching triggers override built-ins
+---@field history CodexWorkbenchPaletteHistoryOpts
+
 ---@class CodexWorkbenchContextsEnabled
 ---@field this boolean Replace @this with current file and nearby lines (default: true)
 ---@field buffer boolean Replace @buffer with the current buffer's text (default: true)
@@ -33,7 +43,7 @@ local M = {}
 ---@class CodexWorkbenchOpts
 ---@field codex_cmd string Command to invoke the Codex CLI (default: "codex")
 ---@field binary CodexWorkbenchBinaryOpts
----@field ui { output: CodexWorkbenchOutputOpts, review: CodexWorkbenchReviewOpts, progress: CodexWorkbenchProgressOpts }
+---@field ui { output: CodexWorkbenchOutputOpts, review: CodexWorkbenchReviewOpts, progress: CodexWorkbenchProgressOpts, palette: CodexWorkbenchPaletteOpts }
 ---@field errors CodexWorkbenchErrorOpts
 ---@field session { auto_resume: boolean } auto_resume: initialize bridge on startup (default: true)
 ---@field shadow { root: string, max_untracked_file_bytes: integer, max_untracked_total_bytes: integer }
@@ -61,6 +71,15 @@ M.defaults = {
     progress = {
       enabled = true,
       position = "bottom_right",
+    },
+    palette = {
+      enabled = true,
+      keymap = "<leader>cp",
+      templates = {},
+      history = {
+        enabled = true,
+        limit = 50,
+      },
     },
   },
   errors = {

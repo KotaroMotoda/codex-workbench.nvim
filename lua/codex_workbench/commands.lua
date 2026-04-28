@@ -155,6 +155,10 @@ function M.register(opts)
     end)
   end, {})
 
+  vim.api.nvim_create_user_command("CodexWorkbenchPalette", function()
+    require("codex_workbench.ui.palette").open(opts)
+  end, {})
+
   vim.api.nvim_create_user_command("CodexWorkbenchAccept", function(command)
     review_action("accept", command.args ~= "" and command.args or "all")
   end, { nargs = "?" })

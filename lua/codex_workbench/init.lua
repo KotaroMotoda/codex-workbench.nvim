@@ -8,6 +8,11 @@ function M.setup(opts)
   require("codex_workbench.ui.progress").configure(M.opts.ui.progress)
   require("codex_workbench.ui.error_prompt").configure(M.opts.errors)
   require("codex_workbench.commands").register(M.opts)
+  if M.opts.ui.palette and M.opts.ui.palette.enabled ~= false and M.opts.ui.palette.keymap then
+    vim.keymap.set("n", M.opts.ui.palette.keymap, function()
+      require("codex_workbench.ui.palette").open(M.opts)
+    end, { desc = "Codex palette" })
+  end
   if M.opts.session.auto_resume then
     require("codex_workbench.bridge").initialize(M.opts)
   end

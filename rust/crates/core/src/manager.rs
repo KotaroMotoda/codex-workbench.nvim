@@ -6,7 +6,8 @@ use std::sync::mpsc::Receiver;
 
 use anyhow::{anyhow, Result};
 use codex_workbench_protocol::{
-    AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, ScopeParams,
+    AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, RecentPromptsParams,
+    ScopeParams,
 };
 use fs2::FileExt as _;
 use serde_json::{json, Value};
@@ -93,6 +94,10 @@ impl Manager {
                 self.ask(params, bridge_rx, sink)
             }
             "review" => self.review(),
+            "recent_prompts" => {
+                let params: RecentPromptsParams = serde_json::from_value(request.params)?;
+                self.recent_prompts(params)
+            }
             "threads" => self.threads(),
             "accept" => {
                 let params: ScopeParams = serde_json::from_value(request.params)?;
@@ -179,6 +184,8 @@ impl Manager {
         sink: &mut dyn EventSink,
     ) -> Result<Value> {
         self.ensure_no_pending_review()?;
+        self.state.push_recent_prompt(params.prompt.clone());
+        self.save_state()?;
         let config = self.config()?.clone();
         let real = self.real()?.clone();
         let shadow = self.shadow()?.clone();
@@ -267,6 +274,13 @@ impl Manager {
         Ok(json!({
             "pending": self.state.pending_review(),
             "reviews": &self.state.reviews,
+        }))
+    }
+
+    fn recent_prompts(&self, params: RecentPromptsParams) -> Result<Value> {
+        self.config()?;
+        Ok(json!({
+            "prompts": self.state.recent_prompts(params.limit as usize),
         }))
     }
 
