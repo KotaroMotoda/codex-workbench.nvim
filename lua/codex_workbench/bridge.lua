@@ -245,6 +245,12 @@ function M.start(opts)
       M.callbacks = {}
       M.init_callbacks = {}
       M.next_id = 1
+      -- Also flush init_callbacks: if the bridge crashes mid-initialization,
+      -- callers of M.initialize() would otherwise wait forever.
+      for _, cb in ipairs(M.init_callbacks) do
+        pcall(cb, crashed)
+      end
+      M.init_callbacks = {}
       M.job_id = nil
       M.initializing = false
       M.state.initialized = false
