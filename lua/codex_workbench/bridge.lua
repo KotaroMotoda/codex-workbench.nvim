@@ -1,6 +1,7 @@
 local output = require("codex_workbench.ui.output")
 local review = require("codex_workbench.ui.review")
 local approval = require("codex_workbench.ui.approval")
+local progress = require("codex_workbench.ui.progress")
 local log = require("codex_workbench.log")
 local error_codes = require("codex_workbench.error_codes")
 
@@ -73,6 +74,7 @@ local function notify_error(payload)
   local message = error_codes.format(payload)
   vim.schedule(function()
     vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
+    require("codex_workbench.ui.error_prompt").show(payload)
   end)
 end
 
@@ -90,12 +92,15 @@ local function handle_event(message)
     M.state.phase = "ready"
     M.state.shadow_path = message.shadow_path
     M.state.thread_id = message.state and message.state.thread_id or nil
+    progress.done("Ready")
   elseif message.event == "turn_started" then
     M.state.phase = "running"
     M.state.thread_id = message.thread_id or M.state.thread_id
+    progress.set("Asking")
   elseif message.event == "turn_completed" then
     M.state.phase = "ready"
     output.finish_turn()
+    progress.done("Done")
   elseif message.event == "thread_started" then
     M.state.thread_id = message.thread_id or M.state.thread_id
   elseif message.event == "output_delta" then
@@ -108,11 +113,17 @@ local function handle_event(message)
     M.state.phase = "review"
     M.state.pending_review = message.item
     review.open(message.item)
+    progress.done("Review ready")
   elseif message.event == "review_state" then
     local pending = message.pending
     M.state.phase = pending and "review" or "ready"
     M.state.pending_review = pending
     review.render(pending)
+    if pending then
+      progress.done("Review ready")
+    else
+      progress.done("Applied")
+    end
   elseif message.event == "approval_request" then
     log.write("INFO", "approval_request", message)
     approval.request(message, function(decision)
@@ -132,7 +143,9 @@ local function handle_event(message)
     M.state.phase = "ready"
     log.write("ERROR", "turn_error", message)
     output.show_error(message.message or "Codex turn failed")
+    progress.done("Error")
   elseif message.event == "error" then
+    progress.done("Error")
     notify_error(message)
   end
 end
@@ -290,6 +303,8 @@ function M.initialize(opts, callback)
     return
   end
 
+  progress.configure(opts.ui and opts.ui.progress or nil)
+  progress.set("Initializing")
   if not M.start(opts) then
     if callback then
       vim.schedule(function()

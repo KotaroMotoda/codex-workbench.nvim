@@ -2,7 +2,7 @@ local M = {
   buf = nil,
   win = nil,
   current = nil,
-  opts = { layout = "vertical" },
+  opts = { layout = "vertical", winbar = true },
 }
 
 ---@param opts CodexWorkbenchReviewOpts|{}
@@ -65,6 +65,8 @@ end
 local function request_review_action(method, scope)
   local log = require("codex_workbench.log")
   local error_codes = require("codex_workbench.error_codes")
+  local error_prompt = require("codex_workbench.ui.error_prompt")
+  require("codex_workbench.ui.progress").set(method == "accept" and "Applying review" or "Rejecting review")
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if response.ok then
       vim.cmd("checktime")
@@ -75,6 +77,7 @@ local function request_review_action(method, scope)
         vim.log.levels.ERROR,
         { title = "codex-workbench" }
       )
+      error_prompt.show(response)
     end
   end)
 end
@@ -111,6 +114,14 @@ local function current_hunk()
     return nil
   end
   return path, hunk
+end
+
+function M.current_file()
+  return current_file()
+end
+
+function M.current_hunk()
+  return current_hunk()
 end
 
 local function map(lhs, fn)
@@ -161,6 +172,30 @@ local function set_keymaps()
   end)
 end
 
+local function apply_winbar()
+  if M.win and vim.api.nvim_win_is_valid(M.win) then
+    require("codex_workbench.ui.review.winbar").apply(M.win, { kind = "review_tree" }, M.opts.winbar ~= false)
+  end
+end
+
+local function apply_diff_marks()
+  if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
+    return
+  end
+  local highlights = require("codex_workbench.ui.review.highlights")
+  vim.api.nvim_buf_clear_namespace(M.buf, highlights.namespace, 0, -1)
+  local lines = vim.api.nvim_buf_get_lines(M.buf, 0, -1, false)
+  for index, line in ipairs(lines) do
+    if line:match("^%+") and not line:match("^%+%+%+") then
+      highlights.mark_line(M.buf, index - 1, "CodexAdd", "+")
+    elseif line:match("^%-") and not line:match("^%-%-%-") then
+      highlights.mark_line(M.buf, index - 1, "CodexDelete", "-")
+    elseif line:match("^@@ ") then
+      highlights.mark_line(M.buf, index - 1, "CodexChange", "~")
+    end
+  end
+end
+
 local function lines_for(item)
   if not item then
     return { "# Codex Review", "", "No pending review." }
@@ -193,6 +228,8 @@ function M.render(item)
   vim.api.nvim_buf_set_lines(M.buf, 0, -1, false, lines_for(item))
   set_modifiable(false)
   set_keymaps()
+  apply_winbar()
+  apply_diff_marks()
   if M.win and vim.api.nvim_win_is_valid(M.win) then
     vim.api.nvim_win_set_cursor(M.win, { math.min(9, vim.api.nvim_buf_line_count(M.buf)), 0 })
   end
