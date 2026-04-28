@@ -26,10 +26,12 @@ function M.register(opts)
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
   local review = require("codex_workbench.ui.review")
+  local inline = require("codex_workbench.ui.inline")
   local thread_picker = require("codex_workbench.ui.thread_picker")
 
   output.configure(opts.ui.output)
   review.configure(opts.ui.review)
+  inline.configure(opts.ui.inline)
   progress.configure(opts.ui.progress)
   error_prompt.configure(opts.errors)
 
@@ -120,6 +122,16 @@ function M.register(opts)
       bridge.request("review", {}, function(response)
         if not report_error(response) then
           review.open(response.result.pending)
+        end
+      end)
+    end)
+  end, {})
+
+  vim.api.nvim_create_user_command("CodexWorkbenchInline", function()
+    with_bridge(function()
+      bridge.request("review", {}, function(response)
+        if not report_error(response) then
+          inline.show(response.result.pending)
         end
       end)
     end)

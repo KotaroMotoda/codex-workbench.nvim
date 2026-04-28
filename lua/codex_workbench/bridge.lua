@@ -1,5 +1,6 @@
 local output = require("codex_workbench.ui.output")
 local review = require("codex_workbench.ui.review")
+local inline = require("codex_workbench.ui.inline")
 local approval = require("codex_workbench.ui.approval")
 local progress = require("codex_workbench.ui.progress")
 local log = require("codex_workbench.log")
@@ -112,13 +113,18 @@ local function handle_event(message)
   elseif message.event == "review_created" then
     M.state.phase = "review"
     M.state.pending_review = message.item
-    review.open(message.item)
+    inline.handle_review(message.item)
     progress.done("Review ready")
   elseif message.event == "review_state" then
     local pending = message.pending
     M.state.phase = pending and "review" or "ready"
     M.state.pending_review = pending
-    review.render(pending)
+    if pending then
+      inline.handle_review(pending)
+    else
+      inline.clear()
+      review.render(pending)
+    end
     if pending then
       progress.done("Review ready")
     else

@@ -19,6 +19,14 @@ local M = {}
 ---@field enabled boolean Show progress toast (default: true)
 ---@field position "bottom_right"|"top_right"|"off" Progress toast position (default: "bottom_right")
 
+---@class CodexWorkbenchInlineOpts
+---@field enabled boolean Show small reviews inline in target buffers (default: true)
+---@field prefix string Buffer-local keymap prefix (default: "<leader>c")
+---@field jump { next: string, prev: string } Hunk navigation maps
+---@field auto_show boolean Automatically show inline review after ask completes (default: true)
+---@field fallback_to_review boolean Open review buffer for large or unsafe reviews (default: true)
+---@field fallback_threshold integer Max file count for inline display (default: 3)
+
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
 
@@ -33,7 +41,7 @@ local M = {}
 ---@class CodexWorkbenchOpts
 ---@field codex_cmd string Command to invoke the Codex CLI (default: "codex")
 ---@field binary CodexWorkbenchBinaryOpts
----@field ui { output: CodexWorkbenchOutputOpts, review: CodexWorkbenchReviewOpts, progress: CodexWorkbenchProgressOpts }
+---@field ui { output: CodexWorkbenchOutputOpts, review: CodexWorkbenchReviewOpts, progress: CodexWorkbenchProgressOpts, inline: CodexWorkbenchInlineOpts }
 ---@field errors CodexWorkbenchErrorOpts
 ---@field session { auto_resume: boolean } auto_resume: initialize bridge on startup (default: true)
 ---@field shadow { root: string, max_untracked_file_bytes: integer, max_untracked_total_bytes: integer }
@@ -61,6 +69,14 @@ M.defaults = {
     progress = {
       enabled = true,
       position = "bottom_right",
+    },
+    inline = {
+      enabled = true,
+      prefix = "<leader>c",
+      jump = { next = "]c", prev = "[c" },
+      auto_show = true,
+      fallback_to_review = true,
+      fallback_threshold = 3,
     },
   },
   errors = {

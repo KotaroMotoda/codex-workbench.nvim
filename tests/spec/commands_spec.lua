@@ -17,6 +17,7 @@ local function make_opts()
     ui = {
       output = { position = "right", size = 40 },
       review = { layout = "vertical" },
+      inline = { enabled = true, auto_show = true },
     },
     contexts = {},
     session = { auto_resume = false },
@@ -108,6 +109,7 @@ describe("commands", function()
       "CodexWorkbenchOpen",
       "CodexWorkbenchAsk",
       "CodexWorkbenchReview",
+      "CodexWorkbenchInline",
       "CodexWorkbenchThreads",
       "CodexWorkbenchAccept",
       "CodexWorkbenchReject",
