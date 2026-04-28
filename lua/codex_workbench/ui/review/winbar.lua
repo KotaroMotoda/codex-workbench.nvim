@@ -21,10 +21,13 @@ function M.apply(win, context, enabled)
   if not win or not vim.api.nvim_win_is_valid(win) then
     return
   end
-  M.contexts[win] = context or {}
   if not enabled or not supports_winbar() then
+    -- Make sure we don't leave a stale winbar around when the caller
+    -- opts out: clear both the cached context and the actual option.
+    M.clear(win)
     return
   end
+  M.contexts[win] = context or {}
   vim.wo[win].winbar = "%!v:lua.require('codex_workbench.ui.review.winbar').render()"
 end
 
@@ -35,8 +38,18 @@ function M.clear(win)
     if supports_winbar() and vim.api.nvim_win_is_valid(win) then
       vim.wo[win].winbar = ""
     end
-  else
-    M.contexts = {}
+    return
+  end
+
+  local known = M.contexts
+  M.contexts = {}
+  if not supports_winbar() then
+    return
+  end
+  for w, _ in pairs(known) do
+    if vim.api.nvim_win_is_valid(w) then
+      vim.wo[w].winbar = ""
+    end
   end
 end
 

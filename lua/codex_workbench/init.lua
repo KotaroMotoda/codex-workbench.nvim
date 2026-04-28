@@ -25,6 +25,9 @@ function M.ask(prompt)
   local error_prompt = require("codex_workbench.ui.error_prompt")
 
   local function report(response)
+    -- Stop the progress toast first; otherwise the spinner keeps
+    -- rotating over the error notification.
+    require("codex_workbench.ui.progress").done("Error", 0)
     log.write("ERROR", "bridge_error", response)
     vim.notify(
       error_codes.format(response) .. "\nLog: " .. log.path(),

@@ -2,6 +2,7 @@ local legacy = require("codex_workbench.ui.review.legacy")
 local parse = require("codex_workbench.ui.review.parse")
 local tree = require("codex_workbench.ui.review.tree")
 local panes = require("codex_workbench.ui.review.panes")
+local winbar = require("codex_workbench.ui.review.winbar")
 
 local M = {
   opts = {
@@ -37,11 +38,15 @@ local function request_review_action(method, scope)
   local log = require("codex_workbench.log")
   local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
-  require("codex_workbench.ui.progress").set(method == "accept" and "Applying review" or "Rejecting review")
+  local progress = require("codex_workbench.ui.progress")
+  progress.set(method == "accept" and "Applying review" or "Rejecting review")
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if response.ok then
       vim.cmd("checktime")
     else
+      -- Stop the spinner immediately on failure; on success the bridge
+      -- emits its own progress.done event.
+      progress.done("Error", 0)
       log.write("ERROR", "review_action_failed", response)
       vim.notify(
         error_codes.format(response) .. "\nLog: " .. log.path(),
@@ -76,6 +81,11 @@ end
 
 local function close_diffview()
   for _, win in ipairs({ M.tree_win, M.before_win, M.after_win }) do
+    -- Drop winbar bookkeeping before closing so we never leak contexts
+    -- for win ids that may later be reused by other windows.
+    if win then
+      winbar.clear(win)
+    end
     if valid_win(win) then
       vim.api.nvim_win_close(win, true)
     end

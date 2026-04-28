@@ -306,6 +306,9 @@ function M.initialize(opts, callback)
   progress.configure(opts.ui and opts.ui.progress or nil)
   progress.set("Initializing")
   if not M.start(opts) then
+    -- The bridge process never came up, so no event will ever close the
+    -- spinner for us. Stop it here before propagating the failure.
+    progress.done("Error", 0)
     if callback then
       vim.schedule(function()
         callback({ ok = false, error_code = "app_server_crashed" })

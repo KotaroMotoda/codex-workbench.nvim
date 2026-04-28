@@ -137,6 +137,18 @@ function M.show(file)
   if not file then
     set_lines(M.before_buf, { "No pending review." })
     set_lines(M.after_buf, { "No pending review." })
+    M.line_hunks[M.before_buf] = nil
+    M.line_hunks[M.after_buf] = nil
+    vim.api.nvim_buf_clear_namespace(M.before_buf, highlights.namespace, 0, -1)
+    vim.api.nvim_buf_clear_namespace(M.after_buf, highlights.namespace, 0, -1)
+    -- Drop stale winbar contexts so the bar does not keep advertising
+    -- a file that is no longer shown in the panes.
+    if M.before_win then
+      winbar.clear(M.before_win)
+    end
+    if M.after_win then
+      winbar.clear(M.after_win)
+    end
     return
   end
 
