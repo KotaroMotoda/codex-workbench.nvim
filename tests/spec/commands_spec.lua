@@ -53,6 +53,28 @@ describe("commands", function()
     bridge.request = function(method, params, cb)
       captured_method = method
       captured_params = params
+      table.insert(request_calls, { method = method, params = params })
+      if cb then
+        if method == "threads" then
+          cb({
+            ok = true,
+            result = {
+              project = { workspace = "/tmp/workspace", current_thread_id = bridge.state.thread_id or vim.NIL },
+              threads = {
+                {
+                  id = "thread-99",
+                  preview = "selected thread",
+                  status = "notLoaded",
+                  source = "cli",
+                },
+              },
+            },
+          })
+        elseif method == "resume" then
+          cb({ ok = true, result = { thread_id = params.thread_id } })
+        else
+          cb({ ok = true, result = {} })
+        end
       end
     end
     output.open = function() end
