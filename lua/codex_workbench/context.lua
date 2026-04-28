@@ -49,22 +49,28 @@ local function file_contents(path)
 end
 
 local function this_context(snap)
-  if snap.file == "" then
+  snap = snap or {}
+  local file = type(snap.file) == "string" and snap.file or ""
+  if file == "" then
     return ""
   end
 
-  local lines = snap.lines or {}
-  local from = math.max(1, snap.lnum - CONTEXT_RADIUS)
-  local to = math.min(#lines, snap.lnum + CONTEXT_RADIUS)
+  local lines = type(snap.lines) == "table" and snap.lines or {}
+  local lnum = type(snap.lnum) == "number" and snap.lnum or 1
+  local last = #lines > 0 and #lines or 1
+  lnum = math.max(1, math.min(last, lnum))
+
+  local from = math.max(1, lnum - CONTEXT_RADIUS)
+  local to = math.min(#lines, lnum + CONTEXT_RADIUS)
   local block = {}
 
   for i = from, to do
-    local marker = i == snap.lnum and ">" or " "
+    local marker = i == lnum and ">" or " "
     table.insert(block, string.format("%s%4d: %s", marker, i, lines[i] or ""))
   end
 
-  local ext = snap.file:match("%.(%w+)$") or ""
-  return snap.file .. "\n```" .. ext .. "\n" .. table.concat(block, "\n") .. "\n```"
+  local ext = file:match("%.(%w+)$") or ""
+  return file .. "\n```" .. ext .. "\n" .. table.concat(block, "\n") .. "\n```"
 end
 
 local function replace_once(prompt, replacements)
@@ -109,9 +115,15 @@ function M.resolve(prompt, opts, snap)
     ["@this"] = enabled.this == false and "@this" or this_context(snap),
     ["@buffer"] = enabled.buffer == false and "@buffer" or table.concat(snap.lines or {}, "\n"),
     ["@selection"] = enabled.selection == false and "@selection" or (snap.selection or ""),
-    ["@diagnostics"] = enabled.diagnostics == false and "@diagnostics" or diagnostics(snap.bufnr),
-    ["@changes"] = enabled.changes == false and "@changes" or changes(snap.file or ""),
   }
+
+  if prompt:find("@diagnostics", 1, true) then
+    replacements["@diagnostics"] = enabled.diagnostics == false and "@diagnostics" or diagnostics(snap.bufnr)
+  end
+
+  if prompt:find("@changes", 1, true) then
+    replacements["@changes"] = enabled.changes == false and "@changes" or changes(snap.file or "")
+  end
 
   local resolved, placeholders = replace_once(prompt, replacements)
 
