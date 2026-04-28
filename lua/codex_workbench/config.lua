@@ -14,6 +14,9 @@ local M = {}
 ---@field mode "split"|"diffview" Review UI mode (default: "split")
 ---@field tree_width integer Width of the file tree pane in diffview mode (default: 30)
 ---@field winbar boolean Show key hints in review winbars (default: true)
+---@field signs boolean Show extmark signs in review panes (default: true)
+---@field badges boolean Show hunk badges in review tree (default: true)
+---@field ascii_only boolean Use ASCII review symbols in badges (default: false)
 
 ---@class CodexWorkbenchProgressOpts
 ---@field enabled boolean Show progress toast (default: true)
@@ -57,6 +60,9 @@ M.defaults = {
       mode = "split",
       tree_width = 30,
       winbar = true,
+      signs = true,
+      badges = true,
+      ascii_only = false,
     },
     progress = {
       enabled = true,

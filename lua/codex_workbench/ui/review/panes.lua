@@ -1,4 +1,4 @@
-local highlights = require("codex_workbench.ui.review.highlights")
+local highlights = require("codex_workbench.ui.highlights")
 local winbar = require("codex_workbench.ui.review.winbar")
 
 local M = {
@@ -90,8 +90,14 @@ local function render_file(file)
     local hunk_index = index - 1
     push_line(before_lines, before_hunks, hunk.header, hunk_index)
     push_line(after_lines, after_hunks, hunk.header, hunk_index)
-    table.insert(before_marks, { row = #before_lines - 1, group = "CodexChange", sign = "~" })
-    table.insert(after_marks, { row = #after_lines - 1, group = "CodexChange", sign = "~" })
+    table.insert(
+      before_marks,
+      { row = #before_lines - 1, group = "CodexChange", sign = "~", sign_group = "CodexChangeSign" }
+    )
+    table.insert(
+      after_marks,
+      { row = #after_lines - 1, group = "CodexChange", sign = "~", sign_group = "CodexChangeSign" }
+    )
 
     for _, line in ipairs(hunk.lines or {}) do
       if line.kind == "context" then
@@ -100,11 +106,17 @@ local function render_file(file)
       elseif line.kind == "delete" then
         push_line(before_lines, before_hunks, line.text, hunk_index)
         push_line(after_lines, after_hunks, "", hunk_index)
-        table.insert(before_marks, { row = #before_lines - 1, group = "CodexDelete", sign = "-" })
+        table.insert(
+          before_marks,
+          { row = #before_lines - 1, group = "CodexDelete", sign = "-", sign_group = "CodexDeleteSign" }
+        )
       elseif line.kind == "add" then
         push_line(before_lines, before_hunks, "", hunk_index)
         push_line(after_lines, after_hunks, line.text, hunk_index)
-        table.insert(after_marks, { row = #after_lines - 1, group = "CodexAdd", sign = "+" })
+        table.insert(
+          after_marks,
+          { row = #after_lines - 1, group = "CodexAdd", sign = "+", sign_group = "CodexAddSign" }
+        )
       else
         push_line(before_lines, before_hunks, line.raw or line.text, hunk_index)
         push_line(after_lines, after_hunks, line.raw or line.text, hunk_index)
@@ -124,7 +136,7 @@ end
 local function apply_marks(buf, marks)
   vim.api.nvim_buf_clear_namespace(buf, highlights.namespace, 0, -1)
   for _, mark in ipairs(marks) do
-    highlights.mark_line(buf, mark.row, mark.group, mark.sign)
+    highlights.mark_line(buf, mark.row, mark.group, mark.sign, mark.sign_group, M.opts.signs)
   end
 end
 
@@ -166,6 +178,7 @@ function M.show(file)
     kind = "review_pane",
     path = file.path,
     hunk_count = #(file.hunks or {}),
+    badge = require("codex_workbench.ui.review.state").badge(file, M.opts),
   }
   winbar.apply(M.before_win, vim.tbl_extend("force", context, { pane = "before" }), M.opts.winbar ~= false)
   winbar.apply(M.after_win, vim.tbl_extend("force", context, { pane = "after" }), M.opts.winbar ~= false)

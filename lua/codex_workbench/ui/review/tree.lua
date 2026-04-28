@@ -1,5 +1,6 @@
-local highlights = require("codex_workbench.ui.review.highlights")
+local highlights = require("codex_workbench.ui.highlights")
 local panes = require("codex_workbench.ui.review.panes")
+local state = require("codex_workbench.ui.review.state")
 local winbar = require("codex_workbench.ui.review.winbar")
 
 local M = {
@@ -7,7 +8,7 @@ local M = {
   win = nil,
   files = {},
   selected = 1,
-  opts = { winbar = true },
+  opts = { winbar = true, badges = true, ascii_only = false },
 }
 
 local function create_buffer()
@@ -50,14 +51,6 @@ local function status_label(file)
   return file.status or "M"
 end
 
-local function badge(file)
-  if file.binary then
-    return "[binary]"
-  end
-  local hunk_count = #(file.hunks or {})
-  return "[" .. hunk_count .. "]"
-end
-
 function M.render(files)
   M.files = files or {}
   if #M.files == 0 then
@@ -84,11 +77,13 @@ function M.render(files)
   vim.api.nvim_buf_clear_namespace(M.buf, highlights.namespace, 0, -1)
   set_modifiable(false)
 
-  for index, file in ipairs(M.files) do
-    vim.api.nvim_buf_set_extmark(M.buf, highlights.namespace, index - 1, 0, {
-      virt_text = { { " " .. badge(file), "CodexPending" } },
-      virt_text_pos = "eol",
-    })
+  if M.opts.badges ~= false then
+    for index, file in ipairs(M.files) do
+      vim.api.nvim_buf_set_extmark(M.buf, highlights.namespace, index - 1, 0, {
+        virt_text = { { "  ", "Normal" }, { state.badge(file, M.opts), "CodexBadge" } },
+        virt_text_pos = "eol",
+      })
+    end
   end
 end
 

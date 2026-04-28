@@ -2,6 +2,8 @@ local parse = require("codex_workbench.ui.review.parse")
 local panes = require("codex_workbench.ui.review.panes")
 local review = require("codex_workbench.ui.review")
 local highlights = require("codex_workbench.ui.review.highlights")
+local state = require("codex_workbench.ui.review.state")
+local tree = require("codex_workbench.ui.review.tree")
 
 local sample_patch = table.concat({
   "diff --git a/src/a.lua b/src/a.lua",
@@ -27,6 +29,7 @@ end
 describe("review diffview", function()
   before_each(function()
     highlights.setup()
+    state.reset()
   end)
 
   after_each(function()
@@ -74,5 +77,26 @@ describe("review diffview", function()
     local path, hunk = review.current_hunk()
     assert.equals("src/a.lua", path)
     assert.equals(0, hunk)
+  end)
+
+  it("renders hunk badges in the tree and honors badge settings", function()
+    local parsed = parse.parse(sample_patch)
+    vim.cmd("vnew")
+    local tree_win = vim.api.nvim_get_current_win()
+
+    tree.configure({ badges = true, ascii_only = true })
+    tree.attach(tree_win)
+    state.accept_file("src/a.lua")
+    tree.render(parsed.files)
+
+    local marks = vim.api.nvim_buf_get_extmarks(tree.buffer(), highlights.namespace, 0, -1, { details = true })
+    assert.equals("[1 hunk · [ok]]", marks[1][4].virt_text[2][1])
+
+    tree.configure({ badges = false })
+    tree.render(parsed.files)
+    marks = vim.api.nvim_buf_get_extmarks(tree.buffer(), highlights.namespace, 0, -1, { details = true })
+    assert.equals(0, #marks)
+
+    close_win(tree_win)
   end)
 end)

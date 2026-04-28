@@ -76,7 +76,16 @@ function M.render()
     local path = context.path or "(none)"
     local pane = context.pane or "pane"
     local hunk = count > 0 and (" (hunk " .. index .. "/" .. count .. ")") or ""
-    return pane .. ": " .. path .. hunk
+    local badge = context.badge and (" " .. context.badge) or ""
+    return "%#CodexWinbarMuted#"
+      .. pane
+      .. ":%* %#CodexWinbarValue#"
+      .. path
+      .. "%*"
+      .. hunk
+      .. "%#CodexBadge#"
+      .. badge
+      .. "%*"
   end
 
   return key_hints()

@@ -2,6 +2,7 @@ local legacy = require("codex_workbench.ui.review.legacy")
 local parse = require("codex_workbench.ui.review.parse")
 local tree = require("codex_workbench.ui.review.tree")
 local panes = require("codex_workbench.ui.review.panes")
+local state = require("codex_workbench.ui.review.state")
 local winbar = require("codex_workbench.ui.review.winbar")
 
 local M = {
@@ -56,6 +57,45 @@ local function request_review_action(method, scope)
       error_prompt.show(response)
     end
   end)
+end
+
+local function record_local_state(method, scope)
+  if scope == "all" then
+    for _, file in ipairs((M.parsed and M.parsed.files) or {}) do
+      if method == "accept" then
+        state.accept_file(file.path)
+      else
+        state.reject_file(file.path)
+      end
+    end
+    return
+  end
+  local file_path = scope:match("^file:(.+)$")
+  if file_path then
+    if method == "accept" then
+      state.accept_file(file_path)
+    else
+      state.reject_file(file_path)
+    end
+    return
+  end
+  local hunk_path, hunk = scope:match("^hunk:(.+):(%d+)$")
+  if hunk_path then
+    if method == "accept" then
+      state.accept_hunk(hunk_path, tonumber(hunk))
+    else
+      state.reject_hunk(hunk_path, tonumber(hunk))
+    end
+  end
+end
+
+local function review_action(method, scope)
+  record_local_state(method, scope)
+  request_review_action(method, scope)
+  if M.opts.mode == "diffview" and M.parsed then
+    tree.render(M.parsed.files)
+    panes.show(M.parsed.files[tree.selected] or M.parsed.files[1])
+  end
 end
 
 local function valid_win(win)
@@ -126,18 +166,18 @@ local function set_common_keymaps(buf)
   end
 
   map("a", function()
-    request_review_action("accept", "all")
+    review_action("accept", "all")
   end)
   map("r", function()
-    request_review_action("reject", "all")
+    review_action("reject", "all")
   end)
   map("A", function()
     local path = current_file()
-    request_review_action("accept", path and ("file:" .. path) or "all")
+    review_action("accept", path and ("file:" .. path) or "all")
   end)
   map("R", function()
     local path = current_file()
-    request_review_action("reject", path and ("file:" .. path) or "all")
+    review_action("reject", path and ("file:" .. path) or "all")
   end)
   map("h", function()
     local path, hunk = current_hunk()
@@ -145,7 +185,7 @@ local function set_common_keymaps(buf)
       vim.notify("No hunk under cursor", vim.log.levels.WARN, { title = "codex-workbench" })
       return
     end
-    request_review_action("accept", "hunk:" .. path .. ":" .. hunk)
+    review_action("accept", "hunk:" .. path .. ":" .. hunk)
   end)
   map("x", function()
     local path, hunk = current_hunk()
@@ -153,7 +193,7 @@ local function set_common_keymaps(buf)
       vim.notify("No hunk under cursor", vim.log.levels.WARN, { title = "codex-workbench" })
       return
     end
-    request_review_action("reject", "hunk:" .. path .. ":" .. hunk)
+    review_action("reject", "hunk:" .. path .. ":" .. hunk)
   end)
   map("q", close_diffview)
   map("]f", function()
