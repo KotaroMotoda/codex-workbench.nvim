@@ -25,6 +25,8 @@ function M.register(opts)
   output.configure(opts.ui.output)
   review.configure(opts.ui.review)
 
+  local next_ask_new_thread = false
+
   local function with_bridge(callback)
     bridge.initialize(opts, function(response)
       if report_error(response) then
@@ -55,16 +57,38 @@ function M.register(opts)
       if not prompt or prompt == "" then
         return
       end
+      next_ask_new_thread = false
       output.open()
       output.start_turn()
       bridge.request("ask", {
         prompt = context.resolve(prompt, opts),
-        thread_id = thread.thread_id,
+        thread_id = thread.new_thread and nil or thread.thread_id,
         new_thread = thread.new_thread == true,
       }, report_error)
     end
 
+    local function ask_with_input(thread)
+      if command.args and command.args ~= "" then
+        run(command.args, thread)
+      else
+        vim.ui.input({ prompt = "Codex: " }, function(prompt)
+          run(prompt, thread)
+        end)
+      end
+    end
+
     with_bridge(function()
+      if next_ask_new_thread then
+        ask_with_input({ new_thread = true })
+        return
+      end
+
+      -- アクティブスレッドがあればピッカーをスキップ
+      if bridge.state.thread_id and bridge.state.phase == "ready" then
+        ask_with_input({ thread_id = bridge.state.thread_id })
+        return
+      end
+
       bridge.request("threads", {}, function(threads_response)
         if report_error(threads_response) then
           return
@@ -73,13 +97,7 @@ function M.register(opts)
           if not thread then
             return
           end
-          if command.args and command.args ~= "" then
-            run(command.args, thread)
-          else
-            vim.ui.input({ prompt = "Codex: " }, function(prompt)
-              run(prompt, thread)
-            end)
-          end
+          ask_with_input(thread)
         end)
       end)
     end)
@@ -106,9 +124,19 @@ function M.register(opts)
             return
           end
           if selected.new_thread then
+            next_ask_new_thread = true
+            bridge.state.thread_id = nil
+            bridge.state.phase = "ready"
             vim.notify("New thread will be used for the next ask", vim.log.levels.INFO, { title = "codex-workbench" })
           else
-            bridge.request("resume", { thread_id = selected.thread_id }, report_error)
+            bridge.request("resume", { thread_id = selected.thread_id }, function(resume_response)
+              if not report_error(resume_response) then
+                local result = resume_response.result or {}
+                next_ask_new_thread = false
+                bridge.state.thread_id = result.thread_id or selected.thread_id
+                bridge.state.phase = "ready"
+              end
+            end)
           end
         end)
       end)

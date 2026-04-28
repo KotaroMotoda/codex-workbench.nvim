@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use anyhow::{anyhow, Context, Result};
-use codex_workbench_protocol::{ApprovalResponseParams, BridgeError, BridgeEvent, BridgeRequest};
+use codex_workbench_protocol::{
+    ApprovalResponseParams, BridgeError, BridgeEvent, BridgeRequest, BridgeResponse,
+};
 use serde_json::{json, Value};
 
 use crate::manager::EventSink;
@@ -326,7 +328,7 @@ impl AppServerClient {
             }),
         ));
 
-        let decision = wait_for_approval(bridge_rx, &approval_id)?;
+        let decision = wait_for_approval(bridge_rx, &approval_id, sink)?;
         self.write_message(&json!({
             "id": app_id,
             "result": { "decision": decision }
@@ -345,14 +347,6 @@ impl AppServerClient {
                     sink.emit(BridgeEvent::new(
                         "thread_started",
                         json!({ "thread_id": thread_id }),
-                    ));
-                }
-            }
-            "turn/started" => {
-                if let Some(turn_id) = extract_turn_id(message) {
-                    sink.emit(BridgeEvent::new(
-                        "turn_started",
-                        json!({ "turn_id": turn_id }),
                     ));
                 }
             }
@@ -438,20 +432,53 @@ impl Drop for AppServerClient {
     }
 }
 
-fn wait_for_approval(rx: &Receiver<BridgeRequest>, approval_id: &str) -> Result<String> {
+fn wait_for_approval(
+    rx: &Receiver<BridgeRequest>,
+    approval_id: &str,
+    sink: &mut dyn crate::manager::EventSink,
+) -> Result<String> {
     loop {
         let request = rx.recv()?;
-        if request.method != "approval_response" {
+        if request.method == "approval_response" {
+            let params: ApprovalResponseParams = serde_json::from_value(request.params)?;
+            if params.approval_id == approval_id {
+                let decision = match params.decision.as_str() {
+                    "approved" | "approved_for_session" | "denied" | "abort" => params.decision,
+                    "accept" => "approved".to_string(),
+                    "decline" => "denied".to_string(),
+                    _ => "denied".to_string(),
+                };
+                if let Some(id) = request.id {
+                    sink.reply(BridgeResponse::ok(
+                        id,
+                        json!({ "approval_id": approval_id, "decision": decision }),
+                    ));
+                }
+                return Ok(decision);
+            }
+            // 別のapproval_idへの応答は無視して待機継続。
+            // ただし id 付き request には必ず応答して呼び出し側を待たせない。
+            if let Some(id) = request.id {
+                sink.reply(BridgeResponse::err(
+                    id,
+                    &BridgeError::Internal {
+                        message: format!(
+                            "approval_id mismatch: expected {}, got {}",
+                            approval_id, params.approval_id
+                        ),
+                    },
+                ));
+            }
             continue;
         }
-        let params: ApprovalResponseParams = serde_json::from_value(request.params)?;
-        if params.approval_id == approval_id {
-            return Ok(match params.decision.as_str() {
-                "approved" | "approved_for_session" | "denied" | "abort" => params.decision,
-                "accept" => "approved".to_string(),
-                "decline" => "denied".to_string(),
-                _ => "denied".to_string(),
-            });
+        // 承認待機中に届いた非approval_responseリクエストはエラーで返す
+        if let Some(id) = request.id {
+            sink.reply(BridgeResponse::err(
+                id,
+                &BridgeError::Internal {
+                    message: "bridge is busy: waiting for approval".to_string(),
+                },
+            ));
         }
     }
 }
@@ -547,6 +574,75 @@ fn turn_error_message(value: &Value) -> Option<String> {
     }
     let (_, message) = parse_remote_error(error);
     Some(message)
+}
+
+#[cfg(test)]
+mod approval_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        replies: Vec<BridgeResponse>,
+    }
+
+    impl EventSink for RecordingSink {
+        fn emit(&mut self, _event: BridgeEvent) {}
+
+        fn reply(&mut self, response: BridgeResponse) {
+            self.replies.push(response);
+        }
+    }
+
+    fn approval_request(id: u64, approval_id: &str, decision: &str) -> BridgeRequest {
+        BridgeRequest {
+            id: Some(id),
+            method: "approval_response".to_string(),
+            params: json!({
+                "approval_id": approval_id,
+                "decision": decision,
+            }),
+        }
+    }
+
+    #[test]
+    fn wait_for_approval_replies_to_matching_id_request() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(approval_request(7, "approval-1", "accept"))
+            .unwrap();
+        drop(tx);
+
+        let mut sink = RecordingSink::default();
+        let decision = wait_for_approval(&rx, "approval-1", &mut sink).unwrap();
+
+        assert_eq!(decision, "approved");
+        assert_eq!(sink.replies.len(), 1);
+        assert_eq!(sink.replies[0].id, 7);
+        assert!(sink.replies[0].ok);
+    }
+
+    #[test]
+    fn wait_for_approval_replies_to_mismatched_id_request_and_keeps_waiting() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(approval_request(7, "other", "approved")).unwrap();
+        tx.send(approval_request(8, "approval-1", "approved"))
+            .unwrap();
+        drop(tx);
+
+        let mut sink = RecordingSink::default();
+        let decision = wait_for_approval(&rx, "approval-1", &mut sink).unwrap();
+
+        assert_eq!(decision, "approved");
+        assert_eq!(sink.replies.len(), 2);
+        assert_eq!(sink.replies[0].id, 7);
+        assert!(!sink.replies[0].ok);
+        assert_eq!(
+            sink.replies[0].error_code.as_deref(),
+            Some("internal_error")
+        );
+        assert_eq!(sink.replies[1].id, 8);
+        assert!(sink.replies[1].ok);
+    }
 }
 
 fn summarize_notification(method: &str, message: &Value) -> Value {

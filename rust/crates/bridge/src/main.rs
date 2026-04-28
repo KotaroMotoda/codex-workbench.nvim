@@ -13,6 +13,10 @@ impl EventSink for StdoutSink {
     fn emit(&mut self, event: BridgeEvent) {
         let _ = write_json(&event);
     }
+
+    fn reply(&mut self, response: BridgeResponse) {
+        let _ = write_json(&response);
+    }
 }
 
 fn main() -> Result<()> {
