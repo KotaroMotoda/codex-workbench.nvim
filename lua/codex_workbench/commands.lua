@@ -129,9 +129,9 @@ function M.register(opts)
             bridge.state.phase = "ready"
             vim.notify("New thread will be used for the next ask", vim.log.levels.INFO, { title = "codex-workbench" })
           else
-            bridge.request("resume", { thread_id = selected.thread_id }, function(response)
-              if not report_error(response) then
-                local result = response.result or {}
+            bridge.request("resume", { thread_id = selected.thread_id }, function(resume_response)
+              if not report_error(resume_response) then
+                local result = resume_response.result or {}
                 next_ask_new_thread = false
                 bridge.state.thread_id = result.thread_id or selected.thread_id
                 bridge.state.phase = "ready"
