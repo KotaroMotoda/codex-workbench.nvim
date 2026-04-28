@@ -97,11 +97,12 @@ jobs:
         uses: JohnnyMorganz/stylua-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          version: latest
+          version: 2.4.1
           args: --check lua/ tests/
 
       - name: Install luacheck
         run: |
+          sudo apt-get update
           sudo apt-get install -y luarocks
           sudo luarocks install luacheck
 

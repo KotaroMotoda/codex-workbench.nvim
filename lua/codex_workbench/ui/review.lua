@@ -55,11 +55,9 @@ local function ensure_window()
   end
 
   vim.api.nvim_win_set_buf(M.win, M.buf)
-  if not win_ok then
-    vim.wo[M.win].number = false
-    vim.wo[M.win].relativenumber = false
-    vim.wo[M.win].wrap = false
-  end
+  vim.wo[M.win].number = false
+  vim.wo[M.win].relativenumber = false
+  vim.wo[M.win].wrap = false
 end
 
 local function request_review_action(method, scope)

@@ -128,6 +128,7 @@ impl SessionState {
         tmp.write_all(json.as_bytes())?;
         tmp.as_file().sync_all()?;
         tmp.persist(path)?;
+        fs::File::open(parent)?.sync_all()?;
         Ok(())
     }
 

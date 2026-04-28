@@ -77,7 +77,7 @@ describe("bridge", function()
   end)
 
   describe("on_exit", function()
-    it("delivers app_server_crashed to pending callbacks synchronously", function()
+    it("schedules app_server_crashed delivery to pending callbacks", function()
       bridge.start({ binary = { path = "fake-bridge" } })
 
       local received = nil
@@ -90,6 +90,9 @@ describe("bridge", function()
       captured_callbacks.on_exit(99, 0)
 
       assert.is_nil(bridge.job_id)
+      vim.wait(100, function()
+        return received ~= nil
+      end)
       assert.is_not_nil(received)
       assert.is_false(received.ok)
       assert.equals("app_server_crashed", received.error_code)

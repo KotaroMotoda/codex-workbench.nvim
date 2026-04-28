@@ -51,11 +51,9 @@ local function ensure_window()
   end
 
   vim.api.nvim_win_set_buf(M.win, M.buf)
-  if not win_ok then
-    vim.wo[M.win].wrap = true
-    vim.wo[M.win].number = false
-    vim.wo[M.win].relativenumber = false
-  end
+  vim.wo[M.win].wrap = true
+  vim.wo[M.win].number = false
+  vim.wo[M.win].relativenumber = false
 end
 
 local function set_lines(lines)

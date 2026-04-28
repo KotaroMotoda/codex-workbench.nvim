@@ -240,21 +240,23 @@ function M.start(opts)
       -- Flush all in-flight callbacks so callers never hang waiting for a
       -- response that will never arrive.
       local crashed = { ok = false, error_code = "app_server_crashed" }
-      for _, cb in pairs(M.callbacks) do
-        pcall(cb, crashed)
-      end
+      local callbacks = M.callbacks
+      local init_callbacks = M.init_callbacks
       M.callbacks = {}
-      M.next_id = 1
-      -- Also flush init_callbacks: if the bridge crashes mid-initialization,
-      -- callers of M.initialize() would otherwise wait forever.
-      for _, cb in ipairs(M.init_callbacks) do
-        pcall(cb, crashed)
-      end
       M.init_callbacks = {}
+      M.next_id = 1
       M.job_id = nil
       M.initializing = false
       M.state.initialized = false
       M.state.phase = "idle"
+      vim.schedule(function()
+        for _, cb in pairs(callbacks) do
+          pcall(cb, crashed)
+        end
+        for _, cb in ipairs(init_callbacks) do
+          pcall(cb, crashed)
+        end
+      end)
       if code ~= 0 and code ~= 130 and code ~= 143 then
         notify_error({ code = "app_server_crashed", details = { exit_code = code } })
       end
@@ -264,7 +266,6 @@ function M.start(opts)
   if M.job_id <= 0 then
     M.job_id = nil -- 0はLuaでtruthyなのでnilに戻す
     log.write("ERROR", "bridge_start_failed", { binary = bin })
-    notify_error({ code = "app_server_crashed" })
     return false
   end
 
