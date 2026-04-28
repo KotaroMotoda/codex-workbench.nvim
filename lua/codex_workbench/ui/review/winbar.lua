@@ -3,15 +3,49 @@ local M = {
 }
 
 local function supports_winbar()
-  return vim.fn.exists("+winbar") == 1
+  return vim.fn.has("nvim-0.8") == 1 and vim.fn.exists("+winbar") == 1
 end
 
 local function winid()
   return tonumber(vim.g.statusline_winid) or vim.api.nvim_get_current_win()
 end
 
+local function width_for(win)
+  if win and vim.api.nvim_win_is_valid(win) then
+    return vim.api.nvim_win_get_width(win)
+  end
+  return vim.o.columns
+end
+
+local function key(lhs)
+  return "%#CodexWinbarKey#[" .. lhs .. "]%*"
+end
+
+local function value(text)
+  return "%#CodexWinbarValue#" .. text .. "%*"
+end
+
+local function muted(text)
+  return "%#CodexWinbarMuted#" .. text .. "%*"
+end
+
 local function key_hints()
-  return "%#Keyword#[a]%* all-accept %#Keyword#[r]%* reject  %#Keyword#[A]%* file %#Keyword#[R]%* file  %#Keyword#[h]%* hunk %#Keyword#[x]%* reject  %#Keyword#[q]%* quit"
+  return key("a")
+    .. "accept-all "
+    .. key("r")
+    .. "reject  "
+    .. key("A")
+    .. "file "
+    .. key("R")
+    .. "file  "
+    .. key("h")
+    .. "hunk "
+    .. key("x")
+    .. "reject  "
+    .. key("]f")
+    .. "next-file  "
+    .. key("q")
+    .. "quit"
 end
 
 ---@param win integer
@@ -53,15 +87,22 @@ function M.clear(win)
   end
 end
 
-function M.render()
-  local win = winid()
-  local context = M.contexts[win] or {}
+function M.render_context(context, win, width)
+  context = context or {}
+  width = width or width_for(win)
   if context.kind == "output" then
-    return "Codex Output  %#Keyword#[<C-\\>]%* toggle-details  %#Keyword#[q]%* close"
+    return require("codex_workbench.ui.output_winbar").render({
+      width = width,
+      phase = context.phase,
+      started_at = context.started_at,
+    })
   end
 
   if context.kind == "review_tree" then
-    return "Review  " .. key_hints()
+    if width < 80 then
+      return "%#CodexWinbar#Review%*  " .. key("]f") .. "next-file  " .. key("q") .. "quit"
+    end
+    return "%#CodexWinbar#Review%*  " .. key_hints()
   end
 
   if context.kind == "review_pane" then
@@ -75,11 +116,19 @@ function M.render()
     end
     local path = context.path or "(none)"
     local pane = context.pane or "pane"
-    local hunk = count > 0 and (" (hunk " .. index .. "/" .. count .. ")") or ""
-    return pane .. ": " .. path .. hunk
+    local hunk = count > 0 and ("hunk " .. index .. "/" .. count) or "no hunks"
+    if width < 80 then
+      return value(hunk)
+    end
+    return muted(pane .. ": ") .. path .. "%=" .. value(hunk)
   end
 
   return key_hints()
+end
+
+function M.render()
+  local win = winid()
+  return M.render_context(M.contexts[win], win)
 end
 
 return M

@@ -9,6 +9,10 @@ function M.setup()
   vim.api.nvim_set_hl(0, "CodexPending", { default = true, link = "WarningMsg" })
   vim.api.nvim_set_hl(0, "CodexAccepted", { default = true, link = "DiagnosticOk" })
   vim.api.nvim_set_hl(0, "CodexRejected", { default = true, link = "Comment" })
+  vim.api.nvim_set_hl(0, "CodexWinbar", { default = true, link = "WinBar" })
+  vim.api.nvim_set_hl(0, "CodexWinbarKey", { default = true, link = "Keyword" })
+  vim.api.nvim_set_hl(0, "CodexWinbarValue", { default = true, link = "String" })
+  vim.api.nvim_set_hl(0, "CodexWinbarMuted", { default = true, link = "Comment" })
 end
 
 ---@param buf integer

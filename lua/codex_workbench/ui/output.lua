@@ -6,6 +6,8 @@ local M = {
   show_details = false,
   final_text = "",
   streamed_text = "",
+  phase = "idle",
+  turn_started_at = nil,
 }
 
 ---@param opts CodexWorkbenchOutputOpts|{}
@@ -56,7 +58,11 @@ local function ensure_window()
     vim.wo[M.win].number = false
     vim.wo[M.win].relativenumber = false
   end
-  require("codex_workbench.ui.review.winbar").apply(M.win, { kind = "output" }, M.opts.winbar ~= false)
+  require("codex_workbench.ui.review.winbar").apply(M.win, {
+    kind = "output",
+    phase = M.phase,
+    started_at = M.turn_started_at,
+  }, M.opts.winbar ~= false)
   vim.keymap.set("n", "q", function()
     if M.win and vim.api.nvim_win_is_valid(M.win) then
       vim.api.nvim_win_close(M.win, true)
@@ -99,18 +105,35 @@ function M.open()
   ensure_window()
 end
 
+local function redraw_winbar()
+  if M.win and vim.api.nvim_win_is_valid(M.win) then
+    require("codex_workbench.ui.review.winbar").apply(M.win, {
+      kind = "output",
+      phase = M.phase,
+      started_at = M.turn_started_at,
+    }, M.opts.winbar ~= false)
+    vim.cmd("redrawstatus")
+  end
+end
+
 function M.start_turn()
   M.final_text = ""
   M.streamed_text = ""
+  M.phase = "streaming"
+  M.turn_started_at = os.time()
   set_lines({ "# Codex", "", "" })
+  redraw_winbar()
 end
 
 function M.finish_turn()
+  M.phase = "ready"
   append_to_last("\n")
+  redraw_winbar()
 end
 
 ---@param message string
 function M.show_error(message)
+  M.phase = "error"
   set_lines({
     "# Codex",
     "",
@@ -121,6 +144,7 @@ function M.show_error(message)
     "Details were written to:",
     require("codex_workbench.log").path(),
   })
+  redraw_winbar()
 end
 
 ---@param text string
