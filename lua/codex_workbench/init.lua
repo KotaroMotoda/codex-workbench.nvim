@@ -7,6 +7,13 @@ function M.setup(opts)
   require("codex_workbench.ui.review.highlights").setup()
   require("codex_workbench.ui.progress").configure(M.opts.ui.progress)
   require("codex_workbench.ui.error_prompt").configure(M.opts.errors)
+  require("codex_workbench.ui.chat").configure(M.opts.ui.chat)
+  if M.opts.ui.chat and M.opts.ui.chat.cmp_source ~= false then
+    local has_cmp, cmp = pcall(require, "cmp")
+    if has_cmp then
+      cmp.register_source("codex_workbench", require("codex_workbench.ui.chat.cmp_source").new())
+    end
+  end
   require("codex_workbench.commands").register(M.opts)
   if M.opts.session.auto_resume then
     require("codex_workbench.bridge").initialize(M.opts)

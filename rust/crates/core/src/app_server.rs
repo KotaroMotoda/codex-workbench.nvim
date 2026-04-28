@@ -24,6 +24,8 @@ pub trait AppServer {
     fn set_thread_id(&mut self, thread_id: Option<String>);
     fn start_thread(&mut self, cwd: &Path) -> Result<String>;
     fn list_threads(&mut self, cwd: &[String]) -> Result<Value>;
+    fn thread_messages(&mut self, thread_id: &str, limit: usize) -> Result<Value>;
+    fn delete_thread(&mut self, thread_id: &str) -> Result<Value>;
     fn resume_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String>;
     fn fork_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String>;
     fn run_turn(
@@ -106,6 +108,25 @@ impl AppServerClient {
                 "sortKey": "updated_at",
                 "sortDirection": "desc",
                 "sourceKinds": ["cli", "vscode", "appServer", "unknown"],
+            }),
+        )
+    }
+
+    pub fn thread_messages(&mut self, thread_id: &str, limit: usize) -> Result<Value> {
+        self.request(
+            "thread/messages",
+            json!({
+                "threadId": thread_id,
+                "limit": limit,
+            }),
+        )
+    }
+
+    pub fn delete_thread(&mut self, thread_id: &str) -> Result<Value> {
+        self.request(
+            "thread/delete",
+            json!({
+                "threadId": thread_id,
             }),
         )
     }
@@ -405,6 +426,14 @@ impl AppServer for AppServerClient {
 
     fn list_threads(&mut self, cwd: &[String]) -> Result<Value> {
         AppServerClient::list_threads(self, cwd)
+    }
+
+    fn thread_messages(&mut self, thread_id: &str, limit: usize) -> Result<Value> {
+        AppServerClient::thread_messages(self, thread_id, limit)
+    }
+
+    fn delete_thread(&mut self, thread_id: &str) -> Result<Value> {
+        AppServerClient::delete_thread(self, thread_id)
     }
 
     fn resume_thread(&mut self, thread_id: &str, cwd: &Path) -> Result<String> {

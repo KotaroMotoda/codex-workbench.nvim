@@ -113,6 +113,22 @@ pub struct AskParams {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ThreadMessagesParams {
+    pub thread_id: String,
+    #[serde(default = "default_thread_messages_limit")]
+    pub limit: usize,
+}
+
+fn default_thread_messages_limit() -> usize {
+    100
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ThreadIdParams {
+    pub thread_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScopeParams {
     #[serde(default = "default_scope")]
     pub scope: String,

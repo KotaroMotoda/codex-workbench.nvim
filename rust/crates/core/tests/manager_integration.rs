@@ -100,6 +100,22 @@ impl AppServer for MockAppServer {
         }))
     }
 
+    fn thread_messages(&mut self, thread_id: &str, _limit: usize) -> Result<Value> {
+        Ok(json!({
+            "messages": [
+                { "role": "user", "text": format!("hello {thread_id}") },
+                { "role": "assistant", "text": "hi" }
+            ]
+        }))
+    }
+
+    fn delete_thread(&mut self, thread_id: &str) -> Result<Value> {
+        if self.thread_id.as_deref() == Some(thread_id) {
+            self.thread_id = None;
+        }
+        Ok(json!({ "deleted": true }))
+    }
+
     fn resume_thread(&mut self, thread_id: &str, _cwd: &Path) -> Result<String> {
         self.thread_id = Some(thread_id.to_string());
         Ok(thread_id.to_string())
@@ -394,6 +410,38 @@ fn threads_uses_injected_mock() {
     let threads = result["threads"].as_array().unwrap();
     assert_eq!(threads.len(), 1, "mock returns one thread");
     assert_eq!(threads[0]["id"], json!("t1"));
+}
+
+#[test]
+fn thread_messages_uses_injected_mock() {
+    let mut env = TestEnv::setup();
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
+
+    let result = env
+        .call("thread/messages", json!({ "thread_id": "t1", "limit": 10 }))
+        .unwrap();
+    assert_eq!(result["thread_id"], json!("t1"));
+    assert_eq!(result["messages"][0]["role"], json!("user"));
+    assert_eq!(result["messages"][0]["text"], json!("hello t1"));
+    assert_eq!(result["messages"][1]["role"], json!("assistant"));
+}
+
+#[test]
+fn thread_delete_clears_current_thread_id() {
+    let mut env = TestEnv::setup();
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
+
+    env.call("ask", json!({ "prompt": "p", "new_thread": true }))
+        .unwrap();
+    let result = env
+        .call("thread/delete", json!({ "thread_id": "mock-thread-1" }))
+        .unwrap();
+    assert_eq!(result["deleted"], json!(true));
+
+    let status = env.call("status", json!({})).unwrap();
+    assert_eq!(status["thread_id"], json!(null));
 }
 
 #[test]

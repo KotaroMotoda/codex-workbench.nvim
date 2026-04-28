@@ -87,6 +87,13 @@ local function log_warn(message)
 end
 
 local function handle_event(message)
+  local function forward_chat(event, payload)
+    local ok, chat = pcall(require, "codex_workbench.ui.chat")
+    if ok and chat.handle_event then
+      chat.handle_event(event, payload or {})
+    end
+  end
+
   if message.event == "ready" then
     M.state.initialized = true
     M.state.phase = "ready"
@@ -97,16 +104,21 @@ local function handle_event(message)
     M.state.phase = "running"
     M.state.thread_id = message.thread_id or M.state.thread_id
     progress.set("Asking")
+    forward_chat("turn_started", message)
   elseif message.event == "turn_completed" then
     M.state.phase = "ready"
     output.finish_turn()
+    forward_chat("turn_completed", message)
     progress.done("Done")
   elseif message.event == "thread_started" then
     M.state.thread_id = message.thread_id or M.state.thread_id
+    forward_chat("thread_started", message)
   elseif message.event == "output_delta" then
     output.append(message.text or "")
+    forward_chat("output_delta", message)
   elseif message.event == "message_completed" then
     output.set_final(message.text or "")
+    forward_chat("message_completed", message)
   elseif message.event == "diff_preview" then
     output.set_diff_preview(message.diff or "")
   elseif message.event == "review_created" then
@@ -143,6 +155,7 @@ local function handle_event(message)
     M.state.phase = "ready"
     log.write("ERROR", "turn_error", message)
     output.show_error(message.message or "Codex turn failed")
+    forward_chat("turn_error", message)
     progress.done("Error")
   elseif message.event == "error" then
     progress.done("Error")

@@ -73,4 +73,19 @@ function M.select(payload, callback)
   end)
 end
 
+function M.sidebar_items(payload)
+  local items = {
+    { new_thread = true, label = "New thread" },
+  }
+  local seen = {}
+  for _, thread in ipairs(payload.threads or {}) do
+    local id = text(thread.id)
+    if id and not seen[id] then
+      seen[id] = true
+      table.insert(items, vim.tbl_extend("force", { label = label(thread) }, thread))
+    end
+  end
+  return items
+end
+
 return M

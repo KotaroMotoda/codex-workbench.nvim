@@ -19,6 +19,15 @@ local M = {}
 ---@field enabled boolean Show progress toast (default: true)
 ---@field position "bottom_right"|"top_right"|"off" Progress toast position (default: "bottom_right")
 
+---@class CodexWorkbenchChatOpts
+---@field enabled boolean Enable chat UI command (default: true)
+---@field position "right"|"tab" Chat UI placement (default: "right")
+---@field width integer Chat columns when position="right" (default: 100)
+---@field threads_width integer Thread sidebar columns (default: 30)
+---@field prompt_height integer Prompt split height (default: 5)
+---@field enter_submits boolean Submit with <CR> in prompt buffer (default: true)
+---@field cmp_source boolean Register nvim-cmp source when available (default: true)
+
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
 
@@ -61,6 +70,15 @@ M.defaults = {
     progress = {
       enabled = true,
       position = "bottom_right",
+    },
+    chat = {
+      enabled = true,
+      position = "right",
+      width = 100,
+      threads_width = 30,
+      prompt_height = 5,
+      enter_submits = true,
+      cmp_source = true,
     },
   },
   errors = {

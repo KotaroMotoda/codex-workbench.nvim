@@ -17,6 +17,8 @@ local function make_opts()
     ui = {
       output = { position = "right", size = 40 },
       review = { layout = "vertical" },
+      progress = { enabled = false },
+      chat = { enabled = true, cmp_source = false },
     },
     contexts = {},
     session = { auto_resume = false },
@@ -106,6 +108,7 @@ describe("commands", function()
   describe("registration", function()
     local expected_commands = {
       "CodexWorkbenchOpen",
+      "CodexWorkbenchChat",
       "CodexWorkbenchAsk",
       "CodexWorkbenchReview",
       "CodexWorkbenchThreads",
