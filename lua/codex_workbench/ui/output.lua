@@ -1,7 +1,7 @@
 local M = {
   buf = nil,
   win = nil,
-  opts = { position = "right", size = 40 },
+  opts = { position = "right", size = 40, winbar = true },
   diff_preview = "",
   show_details = false,
   final_text = "",
@@ -56,6 +56,15 @@ local function ensure_window()
     vim.wo[M.win].number = false
     vim.wo[M.win].relativenumber = false
   end
+  require("codex_workbench.ui.review.winbar").apply(M.win, { kind = "output" }, M.opts.winbar ~= false)
+  vim.keymap.set("n", "q", function()
+    if M.win and vim.api.nvim_win_is_valid(M.win) then
+      vim.api.nvim_win_close(M.win, true)
+    end
+  end, { buffer = M.buf, silent = true, nowait = true })
+  vim.keymap.set("n", "<C-\\>", function()
+    M.toggle_details()
+  end, { buffer = M.buf, silent = true, nowait = true })
 end
 
 local function set_lines(lines)

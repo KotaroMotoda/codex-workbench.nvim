@@ -7,9 +7,20 @@ local M = {}
 ---@class CodexWorkbenchOutputOpts
 ---@field position "right"|"bottom" Split direction for the output window (default: "right")
 ---@field size integer Column or row count for the output window (default: 40)
+---@field winbar boolean Show key hints in the output winbar (default: true)
 
 ---@class CodexWorkbenchReviewOpts
 ---@field layout "vertical"|"horizontal" Split direction for the review window (default: "vertical")
+---@field mode "split"|"diffview" Review UI mode (default: "split")
+---@field tree_width integer Width of the file tree pane in diffview mode (default: 30)
+---@field winbar boolean Show key hints in review winbars (default: true)
+
+---@class CodexWorkbenchProgressOpts
+---@field enabled boolean Show progress toast (default: true)
+---@field position "bottom_right"|"top_right"|"off" Progress toast position (default: "bottom_right")
+
+---@class CodexWorkbenchErrorOpts
+---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
 
 ---@class CodexWorkbenchContextsEnabled
 ---@field this boolean Replace @this with current file and nearby lines (default: true)
@@ -22,7 +33,8 @@ local M = {}
 ---@class CodexWorkbenchOpts
 ---@field codex_cmd string Command to invoke the Codex CLI (default: "codex")
 ---@field binary CodexWorkbenchBinaryOpts
----@field ui { output: CodexWorkbenchOutputOpts, review: CodexWorkbenchReviewOpts }
+---@field ui { output: CodexWorkbenchOutputOpts, review: CodexWorkbenchReviewOpts, progress: CodexWorkbenchProgressOpts }
+---@field errors CodexWorkbenchErrorOpts
 ---@field session { auto_resume: boolean } auto_resume: initialize bridge on startup (default: true)
 ---@field shadow { root: string, max_untracked_file_bytes: integer, max_untracked_total_bytes: integer }
 ---@field contexts { enabled: CodexWorkbenchContextsEnabled }
@@ -38,10 +50,21 @@ M.defaults = {
     output = {
       position = "right",
       size = 40,
+      winbar = true,
     },
     review = {
       layout = "vertical",
+      mode = "split",
+      tree_width = 30,
+      winbar = true,
     },
+    progress = {
+      enabled = true,
+      position = "bottom_right",
+    },
+  },
+  errors = {
+    interactive = true,
   },
   session = {
     auto_resume = true,

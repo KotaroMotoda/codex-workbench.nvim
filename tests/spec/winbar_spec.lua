@@ -1,0 +1,15 @@
+local winbar = require("codex_workbench.ui.review.winbar")
+
+describe("winbar", function()
+  after_each(function()
+    winbar.clear()
+  end)
+
+  it("renders review key hints", function()
+    local win = vim.api.nvim_get_current_win()
+    winbar.apply(win, { kind = "review_tree" }, true)
+    local rendered = winbar.render()
+    assert.is_true(rendered:find("[a]", 1, true) ~= nil)
+    assert.is_true(rendered:find("[q]", 1, true) ~= nil)
+  end)
+end)

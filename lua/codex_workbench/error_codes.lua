@@ -34,6 +34,108 @@ M.messages = {
   shadow_unavailable = "Shadow worktree is unavailable. See the log for details.",
 }
 
+M.actions = {
+  codex_not_found = {
+    { key = "i", label = "install bridge", cmd = "CodexWorkbenchInstallBinary" },
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  bridge_spawn_failed = {
+    { key = "i", label = "install bridge", cmd = "CodexWorkbenchInstallBinary" },
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  app_server_crashed = {
+    { key = "i", label = "install bridge", cmd = "CodexWorkbenchInstallBinary" },
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  app_server_error = {
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  git_failed = {
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  patch_apply_failed = {
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  state_unavailable = {
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  workspace_locked = {
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+  shadow_unavailable = {
+    {
+      key = "l",
+      label = "open log",
+      fn = function()
+        require("codex_workbench.log").open()
+      end,
+    },
+  },
+}
+
+---@param value any
+---@return string|nil
+function M.code(value)
+  if type(value) ~= "table" then
+    return nil
+  end
+  return value.error_code or value.code
+end
+
+---@param code string
+---@return table
+function M.actions_for_code(code)
+  return M.actions[code] or {}
+end
+
 local function trim_message(text, limit)
   limit = limit or 200
   if type(text) ~= "string" then
@@ -71,7 +173,7 @@ function M.format(value)
     return "Codex bridge returned an unknown error."
   end
 
-  local code = value.error_code or value.code
+  local code = M.code(value)
   if code and M.messages[code] then
     return M.messages[code]
   end

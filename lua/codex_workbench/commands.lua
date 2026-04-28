@@ -1,14 +1,20 @@
 local M = {}
 local log = require("codex_workbench.log")
 local error_codes = require("codex_workbench.error_codes")
+local error_prompt = require("codex_workbench.ui.error_prompt")
+local progress = require("codex_workbench.ui.progress")
 
 --- Reports a failed bridge response to the user. Always logs the full
 --- structured payload so that the popup can stay short and code-driven.
 local function report_error(response)
   if response and not response.ok then
+    -- Always stop the spinner so a failure never leaves a toast hanging.
+    -- progress.done is a no-op when nothing is in flight.
+    progress.done("Error", 0)
     log.write("ERROR", "bridge_error", response)
     local message = error_codes.format(response)
     vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
+    error_prompt.show(response)
     return true
   end
   return false
@@ -24,6 +30,8 @@ function M.register(opts)
 
   output.configure(opts.ui.output)
   review.configure(opts.ui.review)
+  progress.configure(opts.ui.progress)
+  error_prompt.configure(opts.errors)
 
   local next_ask_new_thread = false
 
@@ -38,6 +46,7 @@ function M.register(opts)
 
   local function review_action(method, scope)
     with_bridge(function()
+      progress.set(method == "accept" and "Applying review" or "Rejecting review")
       bridge.request(method, { scope = scope or "all" }, function(response)
         if not report_error(response) then
           vim.cmd("checktime")
@@ -62,6 +71,7 @@ function M.register(opts)
       next_ask_new_thread = false
       output.open()
       output.start_turn()
+      progress.set("Asking")
       bridge.request("ask", {
         prompt = context.resolve(prompt, opts, snap),
         thread_id = thread.new_thread and nil or thread.thread_id,
@@ -218,6 +228,7 @@ function M.register(opts)
             vim.log.levels.ERROR,
             { title = "codex-workbench" }
           )
+          error_prompt.show({ code = "internal_error" })
         end
       end)
     end)
