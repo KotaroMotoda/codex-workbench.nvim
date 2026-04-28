@@ -53,6 +53,8 @@ function M.register(opts)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchAsk", function(command)
+    local snap = context.snapshot()
+
     local function run(prompt, thread)
       if not prompt or prompt == "" then
         return
@@ -61,7 +63,7 @@ function M.register(opts)
       output.open()
       output.start_turn()
       bridge.request("ask", {
-        prompt = context.resolve(prompt, opts),
+        prompt = context.resolve(prompt, opts, snap),
         thread_id = thread.new_thread and nil or thread.thread_id,
         new_thread = thread.new_thread == true,
       }, report_error)

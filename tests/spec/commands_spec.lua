@@ -1,6 +1,7 @@
 -- busted specs for codex_workbench.commands
 local commands = require("codex_workbench.commands")
 local bridge = require("codex_workbench.bridge")
+local context = require("codex_workbench.context")
 local output = require("codex_workbench.ui.output")
 
 -- Minimal opts that satisfy commands.register.
@@ -25,7 +26,10 @@ end
 describe("commands", function()
   local original_initialize
   local original_request
+  local original_context_snapshot
+  local original_context_resolve
   local original_ui_select
+  local original_ui_input
   local original_output_open
   local original_output_start_turn
   local captured_method
@@ -35,7 +39,10 @@ describe("commands", function()
   before_each(function()
     original_initialize = bridge.initialize
     original_request = bridge.request
+    original_context_snapshot = context.snapshot
+    original_context_resolve = context.resolve
     original_ui_select = vim.ui.select
+    original_ui_input = vim.ui.input
     original_output_open = output.open
     original_output_start_turn = output.start_turn
     captured_method = nil
@@ -86,7 +93,10 @@ describe("commands", function()
   after_each(function()
     bridge.initialize = original_initialize
     bridge.request = original_request
+    context.snapshot = original_context_snapshot
+    context.resolve = original_context_resolve
     vim.ui.select = original_ui_select
+    vim.ui.input = original_ui_input
     output.open = original_output_open
     output.start_turn = original_output_start_turn
     bridge.state.thread_id = nil
@@ -155,6 +165,54 @@ describe("commands", function()
   end)
 
   describe("CodexWorkbenchThreads and Ask", function()
+    it("resolves command arguments with the snapshot captured at ask time", function()
+      local snap = { file = "/before.lua", lnum = 1, lines = { "before" }, selection = "" }
+      local seen_snap
+      context.snapshot = function()
+        return snap
+      end
+      context.resolve = function(prompt, _, resolved_snap)
+        seen_snap = resolved_snap
+        return "resolved " .. prompt
+      end
+      bridge.state.thread_id = "thread-1"
+      bridge.state.phase = "ready"
+
+      vim.cmd("CodexWorkbenchAsk @this")
+
+      assert.is_true(seen_snap == snap)
+      assert.equals("resolved @this", captured_params and captured_params.prompt)
+    end)
+
+    it("keeps the ask snapshot when vim.ui.input changes the current buffer", function()
+      local snap = { file = "/before.lua", lnum = 1, lines = { "before" }, selection = "" }
+      local scratch
+      local seen_snap
+      context.snapshot = function()
+        return snap
+      end
+      context.resolve = function(_, _, resolved_snap)
+        seen_snap = resolved_snap
+        return resolved_snap.file
+      end
+      vim.ui.input = function(_, callback)
+        scratch = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_name(scratch, "/after.lua")
+        vim.api.nvim_set_current_buf(scratch)
+        callback("@this")
+      end
+      bridge.state.thread_id = "thread-1"
+      bridge.state.phase = "ready"
+
+      vim.cmd("CodexWorkbenchAsk")
+
+      if scratch then
+        pcall(vim.api.nvim_buf_delete, scratch, { force = true })
+      end
+      assert.is_true(seen_snap == snap)
+      assert.equals("/before.lua", captured_params and captured_params.prompt)
+    end)
+
     it("uses the selected resumed thread for the next ask", function()
       bridge.state.thread_id = "old-thread"
       bridge.state.phase = "ready"

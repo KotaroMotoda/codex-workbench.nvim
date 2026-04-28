@@ -20,9 +20,18 @@ describe("context.resolve", function()
     assert.equals("hello world", result)
   end)
 
-  it("replaces @this with file path and line number", function()
-    local result = context.resolve("at @this", {})
-    assert.is_not_nil(result:find("/fake/test/file.lua:", 1, true), "should contain file path")
+  it("replaces @this with a nearby code block and current line marker", function()
+    local snap = {
+      file = "/fake/test/file.lua",
+      lnum = 2,
+      lines = { "line 1", "line 2", "line 3" },
+      selection = "",
+    }
+    local result = context.resolve("at @this", {}, snap)
+    assert.is_not_nil(result:find("/fake/test/file.lua", 1, true), "should contain file path")
+    assert.is_not_nil(result:find("```lua", 1, true), "should contain language fence")
+    assert.is_not_nil(result:find(">   2: line 2", 1, true), "should mark current line")
+    assert.is_nil(result:find("/fake/test/file.lua:2", 1, true), "should not use file:line format")
   end)
 
   it("does not replace @this when disabled", function()
@@ -30,9 +39,29 @@ describe("context.resolve", function()
     assert.equals("@this", result)
   end)
 
+  it("replaces @this with empty string when file is empty", function()
+    local result = context.resolve("@this", {}, { file = "", lnum = 1, lines = {}, selection = "" })
+    assert.equals("", result)
+  end)
+
+  it("keeps @this within buffer bounds for small files", function()
+    local snap = { file = "/fake/test/small.lua", lnum = 1, lines = { "only" }, selection = "" }
+    local result = context.resolve("@this", {}, snap)
+    assert.is_not_nil(result:find(">   1: only", 1, true), "should contain the only line")
+  end)
+
   it("replaces @buffer with all buffer lines joined by newline", function()
     local result = context.resolve("@buffer", {})
     assert.equals("line 1\nline 2\nline 3", result)
+  end)
+
+  it("replaces @buffer from the supplied snapshot", function()
+    local result = context.resolve(
+      "@buffer",
+      {},
+      { file = "/snap.lua", lnum = 1, lines = { "100% done" }, selection = "" }
+    )
+    assert.equals("100% done", result)
   end)
 
   it("does not replace @buffer when disabled", function()
@@ -42,11 +71,18 @@ describe("context.resolve", function()
 
   it("replaces @diagnostics with formatted diagnostic lines", function()
     local original_get = vim.diagnostic.get
-    vim.diagnostic.get = function(_)
+    local seen_bufnr
+    vim.diagnostic.get = function(bufnr)
+      seen_bufnr = bufnr
       return { { lnum = 9, col = 3, message = "undefined var" } }
     end
-    local result = context.resolve("@diagnostics", {})
+    local result = context.resolve(
+      "@diagnostics",
+      {},
+      { bufnr = 42, file = "/snap.lua", lnum = 1, lines = {}, selection = "" }
+    )
     vim.diagnostic.get = original_get
+    assert.equals(42, seen_bufnr)
     assert.equals("10:4 undefined var", result)
   end)
 
@@ -58,6 +94,15 @@ describe("context.resolve", function()
   it("does not replace @selection when disabled", function()
     local result = context.resolve("@selection", { contexts = { enabled = { selection = false } } })
     assert.equals("@selection", result)
+  end)
+
+  it("replaces @selection from the supplied snapshot", function()
+    local result = context.resolve(
+      "@selection",
+      {},
+      { file = "/snap.lua", lnum = 1, lines = {}, selection = "selected text" }
+    )
+    assert.equals("selected text", result)
   end)
 
   it("replaces @file(path) with file contents joined by newline", function()
@@ -87,6 +132,17 @@ describe("context.resolve", function()
     assert.is_not_nil(result:find("end"), "should preserve surrounding text")
   end)
 
+  it("does not expand markers contained inside replacement values", function()
+    local snap = {
+      file = "/fake/test/file.lua",
+      lnum = 1,
+      lines = { "literal @buffer" },
+      selection = "",
+    }
+    local result = context.resolve("@this", {}, snap)
+    assert.is_not_nil(result:find("literal @buffer", 1, true), "should preserve marker text inside code")
+  end)
+
   describe("@changes", function()
     local original_system
 
@@ -99,14 +155,17 @@ describe("context.resolve", function()
     end)
 
     it("replaces @changes with git diff stdout", function()
-      vim.system = function(_, _)
+      local seen_cmd
+      vim.system = function(cmd, _)
+        seen_cmd = cmd
         return {
           wait = function()
             return { code = 0, stdout = "diff output" }
           end,
         }
       end
-      local result = context.resolve("@changes", {})
+      local result = context.resolve("@changes", {}, { file = "/snapshot.lua", lnum = 1, lines = {}, selection = "" })
+      assert.equals("/snapshot.lua", seen_cmd[4])
       assert.equals("diff output", result)
     end)
 

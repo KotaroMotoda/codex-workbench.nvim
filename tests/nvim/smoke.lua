@@ -47,6 +47,8 @@ do
   assert(#truncated <= 205, "error_codes.format should bound fallback length")
 end
 
+assert(type(require("codex_workbench.context").snapshot) == "function", "context.snapshot must exist")
+
 for _, command in ipairs({
   "CodexWorkbenchOpen",
   "CodexWorkbenchAsk",
