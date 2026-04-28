@@ -36,7 +36,6 @@ end
 
 local function request_review_action(method, scope)
   local log = require("codex_workbench.log")
-  local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
   local progress = require("codex_workbench.ui.progress")
   progress.set(method == "accept" and "Applying review" or "Rejecting review")
@@ -48,11 +47,6 @@ local function request_review_action(method, scope)
       -- emits its own progress.done event.
       progress.done("Error", 0)
       log.write("ERROR", "review_action_failed", response)
-      vim.notify(
-        error_codes.format(response) .. "\nLog: " .. log.path(),
-        vim.log.levels.ERROR,
-        { title = "codex-workbench" }
-      )
       error_prompt.show(response)
     end
   end)
@@ -221,6 +215,10 @@ end
 ---@param item table|nil
 function M.open(item)
   M.render(item)
+end
+
+function M.reopen()
+  M.render(M.current)
 end
 
 function M.current_file()

@@ -1,16 +1,19 @@
 -- busted specs for codex_workbench.bridge (synchronous paths only)
 local bridge = require("codex_workbench.bridge")
+local error_prompt = require("codex_workbench.ui.error_prompt")
 
 describe("bridge", function()
   local original_jobstart
   local original_chansend
   local original_jobwait
+  local original_notify
   local captured_callbacks
 
   before_each(function()
     original_jobstart = vim.fn.jobstart
     original_chansend = vim.fn.chansend
     original_jobwait = vim.fn.jobwait
+    original_notify = vim.notify
     captured_callbacks = nil
 
     vim.fn.jobstart = function(_, opts)
@@ -21,6 +24,7 @@ describe("bridge", function()
     vim.fn.jobwait = function(_, _)
       return { -1 }
     end
+    vim.notify = function() end
 
     -- Reset singleton state before each test.
     bridge.job_id = nil
@@ -35,17 +39,20 @@ describe("bridge", function()
     bridge.state.thread_id = nil
     bridge.state.pending_review = nil
     bridge.state.shadow_path = nil
+    error_prompt.configure({ interactive = false, show_log_path = false })
   end)
 
   after_each(function()
     vim.fn.jobstart = original_jobstart
     vim.fn.chansend = original_chansend
     vim.fn.jobwait = original_jobwait
+    vim.notify = original_notify
     bridge.job_id = nil
     bridge.callbacks = {}
     bridge.next_id = 1
     bridge.state.initialized = false
     bridge.state.phase = "idle"
+    error_prompt.configure({ interactive = true, show_log_path = true })
   end)
 
   describe("start", function()

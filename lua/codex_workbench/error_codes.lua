@@ -11,6 +11,8 @@ local M = {}
 -- detailed (stack traces, stderr, paths) belongs in the log file.
 M.messages = {
   not_initialized = "Codex bridge is not initialized.",
+  codex_not_found = "Codex bridge binary was not found.",
+  bridge_spawn_failed = "Codex bridge could not be started. See the log for details.",
   invalid_request = "Codex bridge received an invalid request.",
   unknown_method = "Codex bridge received an unknown method.",
   not_a_git_repository = "This workspace is not a git repository.",
@@ -36,88 +38,48 @@ M.messages = {
 
 M.actions = {
   codex_not_found = {
-    { key = "i", label = "install bridge", cmd = "CodexWorkbenchInstallBinary" },
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "i", label = "bridge をインストール", cmd = "CodexWorkbenchInstallBinary" },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   bridge_spawn_failed = {
-    { key = "i", label = "install bridge", cmd = "CodexWorkbenchInstallBinary" },
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "r", label = "再試行", fn = "retry_last" },
+    { key = "i", label = "bridge をインストール", cmd = "CodexWorkbenchInstallBinary" },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   app_server_crashed = {
-    { key = "i", label = "install bridge", cmd = "CodexWorkbenchInstallBinary" },
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "r", label = "再試行", fn = "retry_last" },
+    { key = "i", label = "bridge をインストール", cmd = "CodexWorkbenchInstallBinary" },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   app_server_error = {
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "r", label = "再試行", fn = "retry_last" },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   git_failed = {
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   patch_apply_failed = {
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "d", label = "差分を再表示", fn = "reopen_review" },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   state_unavailable = {
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   workspace_locked = {
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
   shadow_unavailable = {
-    {
-      key = "l",
-      label = "open log",
-      fn = function()
-        require("codex_workbench.log").open()
-      end,
-    },
+    { key = "p", label = "shadow root を確認", fn = "open_shadow_root" },
+    { key = "l", label = "ログを開く", fn = "open_log" },
+    { key = "c", label = "閉じる", default = true },
   },
 }
 
@@ -134,6 +96,15 @@ end
 ---@return table
 function M.actions_for_code(code)
   return M.actions[code] or {}
+end
+
+---@param code string|nil
+---@return table
+function M.actions_for(code)
+  if not code then
+    return {}
+  end
+  return M.actions_for_code(code)
 end
 
 local function trim_message(text, limit)
