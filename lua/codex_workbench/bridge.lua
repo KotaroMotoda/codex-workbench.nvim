@@ -262,6 +262,7 @@ function M.start(opts)
   })
 
   if M.job_id <= 0 then
+    M.job_id = nil -- 0はLuaでtruthyなのでnilに戻す
     log.write("ERROR", "bridge_start_failed", { binary = bin })
     notify_error({ code = "app_server_crashed" })
     return false
@@ -283,6 +284,11 @@ function M.initialize(opts, callback)
   end
 
   if not M.start(opts) then
+    if callback then
+      vim.schedule(function()
+        callback({ ok = false, error_code = "app_server_crashed" })
+      end)
+    end
     return
   end
 

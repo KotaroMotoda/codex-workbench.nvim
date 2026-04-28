@@ -64,7 +64,23 @@ function M.register(opts)
       }, report_error)
     end
 
+    local function ask_with_input(thread)
+      if command.args and command.args ~= "" then
+        run(command.args, thread)
+      else
+        vim.ui.input({ prompt = "Codex: " }, function(prompt)
+          run(prompt, thread)
+        end)
+      end
+    end
+
     with_bridge(function()
+      -- アクティブスレッドがあればピッカーをスキップ
+      if bridge.state.thread_id and bridge.state.phase == "ready" then
+        ask_with_input({ thread_id = bridge.state.thread_id })
+        return
+      end
+
       bridge.request("threads", {}, function(threads_response)
         if report_error(threads_response) then
           return
@@ -73,13 +89,7 @@ function M.register(opts)
           if not thread then
             return
           end
-          if command.args and command.args ~= "" then
-            run(command.args, thread)
-          else
-            vim.ui.input({ prompt = "Codex: " }, function(prompt)
-              run(prompt, thread)
-            end)
-          end
+          ask_with_input(thread)
         end)
       end)
     end)

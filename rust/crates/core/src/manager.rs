@@ -22,6 +22,10 @@ use crate::state::{
 
 pub trait EventSink {
     fn emit(&mut self, event: BridgeEvent);
+    /// Write a response to a specific request id. Used to reply with an error
+    /// when a non-approval request arrives while the bridge is waiting for
+    /// approval. Default is a no-op (e.g. in test sinks).
+    fn reply(&mut self, _response: codex_workbench_protocol::BridgeResponse) {}
 }
 
 #[derive(Debug, Clone)]

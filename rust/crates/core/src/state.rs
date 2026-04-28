@@ -126,6 +126,7 @@ impl SessionState {
         let mut tmp = NamedTempFile::new_in(parent)?;
         let json = serde_json::to_string_pretty(self)?;
         tmp.write_all(json.as_bytes())?;
+        tmp.as_file().sync_all()?;
         tmp.persist(path)?;
         Ok(())
     }

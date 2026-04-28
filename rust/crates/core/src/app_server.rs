@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use anyhow::{anyhow, Context, Result};
-use codex_workbench_protocol::{ApprovalResponseParams, BridgeError, BridgeEvent, BridgeRequest};
+use codex_workbench_protocol::{
+    ApprovalResponseParams, BridgeError, BridgeEvent, BridgeRequest, BridgeResponse,
+};
 use serde_json::{json, Value};
 
 use crate::manager::EventSink;
@@ -326,7 +328,7 @@ impl AppServerClient {
             }),
         ));
 
-        let decision = wait_for_approval(bridge_rx, &approval_id)?;
+        let decision = wait_for_approval(bridge_rx, &approval_id, sink)?;
         self.write_message(&json!({
             "id": app_id,
             "result": { "decision": decision }
@@ -345,14 +347,6 @@ impl AppServerClient {
                     sink.emit(BridgeEvent::new(
                         "thread_started",
                         json!({ "thread_id": thread_id }),
-                    ));
-                }
-            }
-            "turn/started" => {
-                if let Some(turn_id) = extract_turn_id(message) {
-                    sink.emit(BridgeEvent::new(
-                        "turn_started",
-                        json!({ "turn_id": turn_id }),
                     ));
                 }
             }
@@ -438,20 +432,34 @@ impl Drop for AppServerClient {
     }
 }
 
-fn wait_for_approval(rx: &Receiver<BridgeRequest>, approval_id: &str) -> Result<String> {
+fn wait_for_approval(
+    rx: &Receiver<BridgeRequest>,
+    approval_id: &str,
+    sink: &mut dyn crate::manager::EventSink,
+) -> Result<String> {
     loop {
         let request = rx.recv()?;
-        if request.method != "approval_response" {
+        if request.method == "approval_response" {
+            let params: ApprovalResponseParams = serde_json::from_value(request.params)?;
+            if params.approval_id == approval_id {
+                return Ok(match params.decision.as_str() {
+                    "approved" | "approved_for_session" | "denied" | "abort" => params.decision,
+                    "accept" => "approved".to_string(),
+                    "decline" => "denied".to_string(),
+                    _ => "denied".to_string(),
+                });
+            }
+            // 別のapproval_idへの応答は無視して待機継続
             continue;
         }
-        let params: ApprovalResponseParams = serde_json::from_value(request.params)?;
-        if params.approval_id == approval_id {
-            return Ok(match params.decision.as_str() {
-                "approved" | "approved_for_session" | "denied" | "abort" => params.decision,
-                "accept" => "approved".to_string(),
-                "decline" => "denied".to_string(),
-                _ => "denied".to_string(),
-            });
+        // 承認待機中に届いた非approval_responseリクエストはエラーで返す
+        if let Some(id) = request.id {
+            sink.reply(BridgeResponse::err(
+                id,
+                &BridgeError::Internal {
+                    message: "bridge is busy: waiting for approval".to_string(),
+                },
+            ));
         }
     }
 }
