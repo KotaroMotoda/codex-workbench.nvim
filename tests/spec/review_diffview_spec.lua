@@ -38,9 +38,50 @@ describe("review diffview", function()
     local parsed = parse.parse(sample_patch)
     assert.equals(2, #parsed.files)
     assert.equals("src/a.lua", parsed.files[1].path)
+    assert.equals("modify", parsed.files[1].kind)
     assert.equals(1, #parsed.files[1].hunks)
+    assert.equals(0, parsed.files[1].hunks[1].index)
+    assert.equals("pending", parsed.files[1].hunks[1].state)
+    assert.equals(1, parsed.files[1].hunks[1].old_start)
+    assert.equals(1, parsed.files[1].hunks[1].new_start)
     assert.equals("assets/logo.png", parsed.files[2].path)
+    assert.equals("binary", parsed.files[2].kind)
     assert.is_true(parsed.files[2].binary)
+  end)
+
+  it("classifies add, delete, rename, and binary files", function()
+    local patch = table.concat({
+      "diff --git a/new.lua b/new.lua",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/new.lua",
+      "@@ -0,0 +1 @@",
+      "+return 1",
+      "diff --git a/old.lua b/old.lua",
+      "deleted file mode 100644",
+      "--- a/old.lua",
+      "+++ /dev/null",
+      "@@ -1 +0,0 @@",
+      "-return 0",
+      "diff --git a/name.lua b/renamed.lua",
+      "similarity index 88%",
+      "rename from name.lua",
+      "rename to renamed.lua",
+      "--- a/name.lua",
+      "+++ b/renamed.lua",
+      "@@ -1 +1 @@",
+      "-local name = 'old'",
+      "+local name = 'new'",
+      "diff --git a/bin.dat b/bin.dat",
+      "Binary files a/bin.dat and b/bin.dat differ",
+    }, "\n")
+    local parsed = parse.parse(patch)
+    assert.equals("add", parsed.files[1].kind)
+    assert.equals("delete", parsed.files[2].kind)
+    assert.equals("rename", parsed.files[3].kind)
+    assert.equals("name.lua", parsed.files[3].old_path)
+    assert.equals("renamed.lua", parsed.files[3].path)
+    assert.equals("binary", parsed.files[4].kind)
   end)
 
   it("renders before and after buffers for a selected file", function()
@@ -74,5 +115,30 @@ describe("review diffview", function()
     local path, hunk = review.current_hunk()
     assert.equals("src/a.lua", path)
     assert.equals(0, hunk)
+  end)
+
+  it("moves between hunks in diffview panes", function()
+    local patch = table.concat({
+      "diff --git a/src/a.lua b/src/a.lua",
+      "--- a/src/a.lua",
+      "+++ b/src/a.lua",
+      "@@ -1 +1 @@",
+      "-local a = 1",
+      "+local a = 2",
+      "@@ -10 +10 @@",
+      "-local b = 1",
+      "+local b = 2",
+    }, "\n")
+    review.configure({ mode = "diffview", tree_width = 24, winbar = false })
+    review.render({ id = "r1", turn_id = "t1", status = "pending", files = {}, patch = patch })
+
+    local path, hunk = review.current_hunk()
+    assert.equals("src/a.lua", path)
+    assert.equals(0, hunk)
+
+    vim.cmd("normal ]h")
+    path, hunk = review.current_hunk()
+    assert.equals("src/a.lua", path)
+    assert.equals(1, hunk)
   end)
 end)

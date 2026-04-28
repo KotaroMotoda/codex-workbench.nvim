@@ -7,6 +7,7 @@ local M = {
   win = nil,
   files = {},
   selected = 1,
+  selected_hunks = {},
   opts = { winbar = true },
 }
 
@@ -44,18 +45,62 @@ function M.attach(win)
 end
 
 local function status_label(file)
-  if file.binary then
+  if file.kind == "binary" or file.binary then
     return "B"
+  end
+  if file.kind == "add" then
+    return "A"
+  end
+  if file.kind == "delete" then
+    return "D"
+  end
+  if file.kind == "rename" then
+    return "R"
   end
   return file.status or "M"
 end
 
 local function badge(file)
-  if file.binary then
+  if file.kind == "binary" or file.binary then
     return "[binary]"
   end
   local hunk_count = #(file.hunks or {})
   return "[" .. hunk_count .. "]"
+end
+
+local function display_path(file)
+  if file.kind == "rename" and file.old_path and file.old_path ~= file.path then
+    local arrow = M.opts.ascii_only and " -> " or " \226\134\146 "
+    return file.old_path .. arrow .. file.path
+  end
+  return file.path
+end
+
+local function state_marker(file)
+  local state = file.state
+  if not state and #(file.hunks or {}) > 0 then
+    local accepted = 0
+    local rejected = 0
+    for _, hunk in ipairs(file.hunks) do
+      if hunk.state == "accepted" then
+        accepted = accepted + 1
+      elseif hunk.state == "rejected" then
+        rejected = rejected + 1
+      end
+    end
+    if accepted == #file.hunks then
+      state = "accepted"
+    elseif rejected == #file.hunks then
+      state = "rejected"
+    end
+  end
+  if state == "accepted" then
+    return M.opts.ascii_only and "v" or "\226\156\147"
+  end
+  if state == "rejected" then
+    return "x"
+  end
+  return " "
 end
 
 function M.render(files)
@@ -75,7 +120,7 @@ function M.render(files)
   else
     for index, file in ipairs(M.files) do
       local marker = index == M.selected and "> " or "  "
-      table.insert(lines, marker .. status_label(file) .. " " .. file.path)
+      table.insert(lines, marker .. state_marker(file) .. " " .. status_label(file) .. " " .. display_path(file))
     end
   end
 
@@ -110,6 +155,27 @@ function M.select_next(delta)
   M.select(M.selected + delta)
 end
 
+function M.select_hunk(index)
+  local file = M.files[M.selected]
+  if not file or #(file.hunks or {}) == 0 then
+    panes.focus_hunk(nil)
+    return
+  end
+  local count = #file.hunks
+  local bounded = math.max(0, math.min(index, count - 1))
+  M.selected_hunks[file.path] = bounded
+  panes.focus_hunk(bounded)
+end
+
+function M.select_hunk_next(delta)
+  local file = M.files[M.selected]
+  if not file or #(file.hunks or {}) == 0 then
+    return
+  end
+  local current = M.current_hunk() or 0
+  M.select_hunk(current + delta)
+end
+
 function M.current_file()
   local file = M.files[M.selected]
   return file and file.path or nil
@@ -120,8 +186,11 @@ function M.current_hunk()
   if not file or #(file.hunks or {}) == 0 then
     return nil
   end
+  if M.win and vim.api.nvim_get_current_win() == M.win then
+    return M.selected_hunks[file.path] or 0
+  end
   local hunk = panes.current_hunk()
-  return hunk or 0
+  return hunk or M.selected_hunks[file.path] or 0
 end
 
 function M.buffer()
@@ -137,6 +206,7 @@ function M.reset()
   M.win = nil
   M.files = {}
   M.selected = 1
+  M.selected_hunks = {}
 end
 
 return M

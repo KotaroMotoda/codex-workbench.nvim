@@ -9,6 +9,8 @@ local M = {
     layout = "vertical",
     mode = "split",
     tree_width = 30,
+    pane_split = 50,
+    ascii_only = false,
     winbar = true,
   },
   current = nil,
@@ -67,12 +69,16 @@ local function ensure_layout()
     return
   end
 
-  local after_width = math.max(30, math.floor((vim.o.columns - (tonumber(M.opts.tree_width) or 30)) / 2))
+  local tree_width = tonumber(M.opts.tree_width) or 30
+  local ratio = math.max(10, math.min(90, tonumber(M.opts.pane_split) or 50))
+  local content_width = math.max(60, vim.o.columns - tree_width)
+  local before_width = math.max(30, math.floor(content_width * ratio / 100))
+  local after_width = math.max(30, content_width - before_width)
   vim.cmd("botright vertical " .. after_width .. "new")
   M.after_win = vim.api.nvim_get_current_win()
-  vim.cmd("leftabove vertical " .. after_width .. "new")
+  vim.cmd("leftabove vertical " .. before_width .. "new")
   M.before_win = vim.api.nvim_get_current_win()
-  vim.cmd("leftabove vertical " .. (tonumber(M.opts.tree_width) or 30) .. "new")
+  vim.cmd("leftabove vertical " .. tree_width .. "new")
   M.tree_win = vim.api.nvim_get_current_win()
 
   tree.attach(M.tree_win)
@@ -161,6 +167,12 @@ local function set_common_keymaps(buf)
   end)
   map("[f", function()
     tree.select_next(-1)
+  end)
+  map("]h", function()
+    tree.select_hunk_next(1)
+  end)
+  map("[h", function()
+    tree.select_hunk_next(-1)
   end)
 end
 

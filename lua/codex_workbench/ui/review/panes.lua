@@ -21,7 +21,7 @@ local function create_buffer(name)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(buf, name .. "-" .. buf)
   vim.bo[buf].buftype = "nofile"
-  vim.bo[buf].bufhidden = "hide"
+  vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].swapfile = false
   vim.bo[buf].modifiable = false
   return buf
@@ -211,6 +211,31 @@ function M.reset()
   M.after_win = nil
   M.current = nil
   M.line_hunks = {}
+end
+
+---@param hunk_index integer|nil zero-based hunk index
+function M.focus_hunk(hunk_index)
+  if hunk_index == nil or not M.before_win or not vim.api.nvim_win_is_valid(M.before_win) then
+    return
+  end
+  local map = M.line_hunks[M.before_buf] or {}
+  for lnum = 1, #map do
+    local mapped = map[lnum]
+    if mapped == hunk_index then
+      vim.api.nvim_win_set_cursor(M.before_win, { lnum, 0 })
+      if M.after_win and vim.api.nvim_win_is_valid(M.after_win) then
+        local after_map = M.line_hunks[M.after_buf] or {}
+        for after_lnum = 1, #after_map do
+          local after_mapped = after_map[after_lnum]
+          if after_mapped == hunk_index then
+            vim.api.nvim_win_set_cursor(M.after_win, { after_lnum, 0 })
+            break
+          end
+        end
+      end
+      return
+    end
+  end
 end
 
 return M
