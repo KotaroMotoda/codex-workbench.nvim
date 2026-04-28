@@ -130,7 +130,7 @@ require("codex_workbench").setup({
   -- Context markers available in prompts
   contexts = {
     enabled = {
-      this        = true,  -- @this  → current file:line
+      this        = true,  -- @this  → current file and nearby lines
       buffer      = true,  -- @buffer → full buffer text
       selection   = true,  -- @selection → visual selection
       diagnostics = true,  -- @diagnostics → LSP diagnostics

@@ -12,7 +12,7 @@ local M = {}
 ---@field layout "vertical"|"horizontal" Split direction for the review window (default: "vertical")
 
 ---@class CodexWorkbenchContextsEnabled
----@field this boolean Replace @this with file:line (default: true)
+---@field this boolean Replace @this with current file and nearby lines (default: true)
 ---@field buffer boolean Replace @buffer with the current buffer's text (default: true)
 ---@field selection boolean Replace @selection with the visual selection (default: true)
 ---@field diagnostics boolean Replace @diagnostics with LSP diagnostics (default: true)
