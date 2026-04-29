@@ -11,6 +11,14 @@ function M.setup(opts)
     callback = highlights.setup,
   })
   require("codex_workbench.ui.progress").configure(M.opts.ui.progress)
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = vim.api.nvim_create_augroup("CodexWorkbenchProgress", { clear = true }),
+    callback = function()
+      pcall(function()
+        require("codex_workbench.ui.progress").reposition()
+      end)
+    end,
+  })
   require("codex_workbench.ui.error_prompt").configure(M.opts.errors)
   require("codex_workbench.commands").register(M.opts)
   if M.opts.session.auto_resume then
@@ -30,9 +38,9 @@ function M.ask(prompt)
   local error_prompt = require("codex_workbench.ui.error_prompt")
 
   local function report(response)
-    -- Stop the progress toast first; otherwise the spinner keeps
-    -- rotating over the error notification.
-    require("codex_workbench.ui.progress").done("Error", 0)
+    -- Replace the progress toast with an error toast so the spinner
+    -- stops before showing the other error notification.
+    require("codex_workbench.ui.progress").error("Error")
     log.write("ERROR", "bridge_error", response)
     vim.notify(
       error_codes.format(response) .. "\nLog: " .. log.path(),

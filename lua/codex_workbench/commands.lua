@@ -8,9 +8,9 @@ local progress = require("codex_workbench.ui.progress")
 --- structured payload so that the popup can stay short and code-driven.
 local function report_error(response)
   if response and not response.ok then
-    -- Always stop the spinner so a failure never leaves a toast hanging.
-    -- progress.done is a no-op when nothing is in flight.
-    progress.done("Error", 0)
+    -- Surface an error toast and stop any active spinner so failures
+    -- never leave a progress toast hanging.
+    progress.error("Error")
     log.write("ERROR", "bridge_error", response)
     local message = error_codes.format(response)
     vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
