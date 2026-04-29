@@ -14,6 +14,7 @@ local function entry_label(entry)
 end
 
 local function select_fallback(entries, opts)
+  opts = opts or {}
   vim.ui.select(entries, {
     prompt = opts.prompt,
     format_item = entry_label,
@@ -37,6 +38,7 @@ local function telescope_backend()
   return {
     name = "telescope",
     show = function(entries, opts)
+      opts = opts or {}
       pickers
         .new({}, {
           prompt_title = opts.prompt or "Codex Palette",
@@ -69,13 +71,14 @@ end
 
 local function snacks_backend()
   local ok, snacks = pcall(require, "snacks")
-  if not ok or not snacks.picker then
+  if not ok or not snacks.picker or type(snacks.picker.pick) ~= "function" then
     return nil
   end
 
   return {
     name = "snacks",
     show = function(entries, opts)
+      opts = opts or {}
       snacks.picker.pick({
         title = opts.prompt or "Codex Palette",
         items = vim.tbl_map(function(entry)
@@ -104,6 +107,7 @@ local function fzf_lua_backend()
   return {
     name = "fzf-lua",
     show = function(entries, opts)
+      opts = opts or {}
       local labels = {}
       local by_label = {}
       for index, entry in ipairs(entries) do
@@ -139,7 +143,9 @@ function M.pick()
   end
   return {
     name = "vim.ui.select",
-    show = select_fallback,
+    show = function(entries, opts)
+      select_fallback(entries, opts or {})
+    end,
   }
 end
 
@@ -148,7 +154,9 @@ M._entry_label = entry_label
 function M.show(entries, opts)
   local fallback = {
     name = "vim.ui.select",
-    show = select_fallback,
+    show = function(items, picker_opts)
+      select_fallback(items, picker_opts or {})
+    end,
   }
   for _, factory in ipairs({ telescope_backend, snacks_backend, fzf_lua_backend }) do
     local ok, backend = pcall(factory)

@@ -85,6 +85,8 @@ pub struct InitializeParams {
     pub max_untracked_file_bytes: u64,
     #[serde(default = "default_max_untracked_total_bytes")]
     pub max_untracked_total_bytes: u64,
+    #[serde(default = "default_max_recent_prompts")]
+    pub max_recent_prompts: usize,
 }
 
 fn default_codex_cmd() -> String {
@@ -103,6 +105,10 @@ fn default_max_untracked_total_bytes() -> u64 {
     50 * 1024 * 1024
 }
 
+fn default_max_recent_prompts() -> usize {
+    100
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AskParams {
     pub prompt: String,
@@ -110,6 +116,12 @@ pub struct AskParams {
     pub thread_id: Option<String>,
     #[serde(default)]
     pub new_thread: bool,
+    #[serde(default = "default_persist_history")]
+    pub persist_history: bool,
+}
+
+fn default_persist_history() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -120,6 +132,22 @@ pub struct RecentPromptsParams {
 
 fn default_recent_prompts_limit() -> u32 {
     50
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ThreadMessagesParams {
+    pub thread_id: String,
+    #[serde(default = "default_thread_messages_limit")]
+    pub limit: usize,
+}
+
+fn default_thread_messages_limit() -> usize {
+    100
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ThreadIdParams {
+    pub thread_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

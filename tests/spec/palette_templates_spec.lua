@@ -16,4 +16,20 @@ describe("palette templates", function()
     assert.equals("custom fix", by_trigger["/fix"])
     assert.equals("custom prompt", by_trigger["/custom"])
   end)
+
+  it("drops non-string details", function()
+    local result = templates.list({
+      { trigger = "/safe", prompt = "prompt", detail = false },
+    })
+
+    local found
+    for _, item in ipairs(result) do
+      if item.trigger == "/safe" then
+        found = item
+      end
+    end
+
+    assert.is_not_nil(found)
+    assert.is_nil(found.detail)
+  end)
 end)

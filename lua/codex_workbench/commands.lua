@@ -1,35 +1,62 @@
 local M = {}
 local log = require("codex_workbench.log")
-local error_codes = require("codex_workbench.error_codes")
 local error_prompt = require("codex_workbench.ui.error_prompt")
 local progress = require("codex_workbench.ui.progress")
+local last_ask = nil
+local current_opts = nil
+
+function M.set_last_ask(payload)
+  last_ask = payload
+end
 
 --- Reports a failed bridge response to the user. Always logs the full
 --- structured payload so that the popup can stay short and code-driven.
 local function report_error(response)
   if response and not response.ok then
-    -- Always stop the spinner so a failure never leaves a toast hanging.
-    -- progress.done is a no-op when nothing is in flight.
-    progress.done("Error", 0)
+    -- Surface an error toast and stop any active spinner so failures
+    -- never leave a progress toast hanging.
+    progress.error("Error")
     log.write("ERROR", "bridge_error", response)
-    local message = error_codes.format(response)
-    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
     error_prompt.show(response)
     return true
   end
   return false
 end
 
+function M.retry_last()
+  if not last_ask then
+    vim.notify("No ask request to retry", vim.log.levels.WARN, { title = "codex-workbench" })
+    return
+  end
+  local bridge = require("codex_workbench.bridge")
+  local output = require("codex_workbench.ui.output")
+  local opts = current_opts or require("codex_workbench.config").current or require("codex_workbench.config").setup({})
+  bridge.initialize(opts, function(response)
+    if report_error(response) then
+      return
+    end
+    output.open()
+    output.start_turn()
+    progress.set("Asking")
+    bridge.request("ask", last_ask, report_error)
+  end)
+end
+
 ---@param opts CodexWorkbenchOpts
 function M.register(opts)
+  current_opts = opts
   local bridge = require("codex_workbench.bridge")
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
   local review = require("codex_workbench.ui.review")
+  local inline = require("codex_workbench.ui.inline")
+  local chat = require("codex_workbench.ui.chat")
   local thread_picker = require("codex_workbench.ui.thread_picker")
 
   output.configure(opts.ui.output)
   review.configure(opts.ui.review)
+  inline.configure(opts.ui.inline)
+  chat.configure(opts.ui.chat)
   progress.configure(opts.ui.progress)
   error_prompt.configure(opts.errors)
 
@@ -61,6 +88,12 @@ function M.register(opts)
     end)
   end, {})
 
+  vim.api.nvim_create_user_command("CodexWorkbenchChat", function()
+    with_bridge(function()
+      chat.open()
+    end)
+  end, {})
+
   vim.api.nvim_create_user_command("CodexWorkbenchAsk", function(command)
     local snap = context.snapshot()
 
@@ -72,11 +105,13 @@ function M.register(opts)
       output.open()
       output.start_turn()
       progress.set("Asking")
-      bridge.request("ask", {
+      M.set_last_ask({
         prompt = context.resolve(prompt, opts, snap),
         thread_id = thread.new_thread and nil or thread.thread_id,
         new_thread = thread.new_thread == true,
-      }, report_error)
+        persist_history = require("codex_workbench.ui.palette.history").enabled(opts),
+      })
+      bridge.request("ask", last_ask, report_error)
     end
 
     local function ask_with_input(thread)
@@ -120,6 +155,16 @@ function M.register(opts)
       bridge.request("review", {}, function(response)
         if not report_error(response) then
           review.open(response.result.pending)
+        end
+      end)
+    end)
+  end, {})
+
+  vim.api.nvim_create_user_command("CodexWorkbenchInline", function()
+    with_bridge(function()
+      bridge.request("review", {}, function(response)
+        if not report_error(response) then
+          inline.show(response.result.pending)
         end
       end)
     end)
@@ -227,11 +272,6 @@ function M.register(opts)
             stdout = result.stdout,
             code = result.code,
           })
-          vim.notify(
-            error_codes.format({ code = "internal_error" }) .. "\nLog: " .. log.path(),
-            vim.log.levels.ERROR,
-            { title = "codex-workbench" }
-          )
           error_prompt.show({ code = "internal_error" })
         end
       end)

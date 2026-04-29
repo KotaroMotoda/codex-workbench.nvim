@@ -2,7 +2,7 @@ local M = {
   buf = nil,
   win = nil,
   current = nil,
-  opts = { layout = "vertical", winbar = true },
+  opts = { layout = "vertical", winbar = true, signs = true },
 }
 
 ---@param opts CodexWorkbenchReviewOpts|{}
@@ -64,19 +64,15 @@ end
 
 local function request_review_action(method, scope)
   local log = require("codex_workbench.log")
-  local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
+  local progress = require("codex_workbench.ui.progress")
   require("codex_workbench.ui.progress").set(method == "accept" and "Applying review" or "Rejecting review")
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if response.ok then
       vim.cmd("checktime")
     else
+      progress.done("Error", 0)
       log.write("ERROR", "review_action_failed", response)
-      vim.notify(
-        error_codes.format(response) .. "\nLog: " .. log.path(),
-        vim.log.levels.ERROR,
-        { title = "codex-workbench" }
-      )
       error_prompt.show(response)
     end
   end)
@@ -182,16 +178,16 @@ local function apply_diff_marks()
   if not M.buf or not vim.api.nvim_buf_is_valid(M.buf) then
     return
   end
-  local highlights = require("codex_workbench.ui.review.highlights")
+  local highlights = require("codex_workbench.ui.highlights")
   vim.api.nvim_buf_clear_namespace(M.buf, highlights.namespace, 0, -1)
   local lines = vim.api.nvim_buf_get_lines(M.buf, 0, -1, false)
   for index, line in ipairs(lines) do
     if line:match("^%+") and not line:match("^%+%+%+") then
-      highlights.mark_line(M.buf, index - 1, "CodexAdd", "+")
+      highlights.mark_line(M.buf, index - 1, "CodexAdd", "+", "CodexAddSign", M.opts.signs)
     elseif line:match("^%-") and not line:match("^%-%-%-") then
-      highlights.mark_line(M.buf, index - 1, "CodexDelete", "-")
+      highlights.mark_line(M.buf, index - 1, "CodexDelete", "-", "CodexDeleteSign", M.opts.signs)
     elseif line:match("^@@ ") then
-      highlights.mark_line(M.buf, index - 1, "CodexChange", "~")
+      highlights.mark_line(M.buf, index - 1, "CodexChange", "~", "CodexChangeSign", M.opts.signs)
     end
   end
 end

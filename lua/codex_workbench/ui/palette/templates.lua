@@ -15,7 +15,7 @@ local function normalize(template)
   return {
     trigger = template.trigger,
     prompt = type(template.prompt) == "string" and template.prompt or "",
-    detail = template.detail,
+    detail = type(template.detail) == "string" and template.detail or nil,
   }
 end
 

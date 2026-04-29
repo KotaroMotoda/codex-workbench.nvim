@@ -22,6 +22,10 @@ COMMANDS                                           *codex-workbench-commands*
 :CodexWorkbenchOpen
   Start the bridge and open the output pane.
 
+:CodexWorkbenchChat
+  Start the bridge and open the persistent chat layout. The chat layout keeps
+  a thread sidebar, a read-only markdown message buffer, and a prompt buffer.
+
 :CodexWorkbenchAsk [prompt]
   Choose a Codex thread for the current repository, then send a prompt.
   Without [prompt], opens vim.ui.input() after thread selection.
@@ -73,6 +77,15 @@ require("codex_workbench").setup({
   ui = {
     output = { position = "right", size = 40 },
     review = { layout = "vertical" },
+    chat = {
+      enabled = true,
+      position = "right",
+      width = 100,
+      threads_width = 30,
+      prompt_height = 5,
+      enter_submits = true,
+      cmp_source = true,
+    },
   },
   session = { auto_resume = true },
   shadow = {

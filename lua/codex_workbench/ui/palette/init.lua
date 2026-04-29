@@ -30,7 +30,7 @@ end
 local function prompt_with_prefill(prompt)
   vim.ui.input({ prompt = "Codex: ", default = prompt }, function(input)
     if input and input ~= "" then
-      require("codex_workbench").ask(input)
+      require("codex_workbench").ask(input, { resolve_context = false })
     end
   end)
 end

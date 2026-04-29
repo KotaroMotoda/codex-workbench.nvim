@@ -152,13 +152,22 @@ impl SessionState {
     }
 
     pub fn push_recent_prompt(&mut self, prompt: impl Into<String>) {
+        self.push_recent_prompt_with_limit(prompt, Self::MAX_RECENT_PROMPTS)
+    }
+
+    pub fn push_recent_prompt_with_limit(&mut self, prompt: impl Into<String>, max: usize) {
         let prompt = prompt.into();
         if prompt.trim().is_empty() {
             return;
         }
+        let max = max.min(Self::MAX_RECENT_PROMPTS);
+        if max == 0 {
+            self.recent_prompts.clear();
+            return;
+        }
         self.recent_prompts.retain(|existing| existing != &prompt);
         self.recent_prompts.push_front(prompt);
-        while self.recent_prompts.len() > Self::MAX_RECENT_PROMPTS {
+        while self.recent_prompts.len() > max {
             self.recent_prompts.pop_back();
         }
     }
@@ -262,5 +271,17 @@ mod tests {
         state.save(&path).unwrap();
         let loaded = SessionState::load(&path).unwrap();
         assert_eq!(loaded.recent_prompts(2), vec!["prompt-100", "prompt-104"]);
+    }
+
+    #[test]
+    fn recent_prompts_can_use_a_smaller_runtime_cap() {
+        let mut state = SessionState::default();
+        for index in 0..5 {
+            state.push_recent_prompt_with_limit(format!("prompt-{index}"), 2);
+        }
+        assert_eq!(state.recent_prompts(10), vec!["prompt-4", "prompt-3"]);
+
+        state.push_recent_prompt_with_limit("hidden", 0);
+        assert!(state.recent_prompts(10).is_empty());
     }
 }

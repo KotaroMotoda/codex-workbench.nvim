@@ -1,17 +1,32 @@
 local M = {}
 
+local DEFAULT_LIMIT = 50
+
+function M.enabled(opts)
+  local history_opts = opts and opts.ui and opts.ui.palette and opts.ui.palette.history or {}
+  return history_opts.enabled ~= false
+end
+
+function M.limit(opts)
+  local history_opts = opts and opts.ui and opts.ui.palette and opts.ui.palette.history or {}
+  local value = tonumber(history_opts.limit)
+  if not value then
+    return DEFAULT_LIMIT
+  end
+  return math.max(0, math.floor(value))
+end
+
 ---@param opts table|nil
 ---@param callback fun(prompts: string[]): nil
 function M.recent(opts, callback)
   opts = opts or {}
-  local history_opts = opts.ui and opts.ui.palette and opts.ui.palette.history or {}
-  if history_opts.enabled == false then
+  if not M.enabled(opts) then
     callback({})
     return
   end
 
   local bridge = require("codex_workbench.bridge")
-  local limit = tonumber(history_opts.limit) or 50
+  local limit = M.limit(opts)
   bridge.initialize(opts, function(init_response)
     if not init_response.ok then
       callback({})

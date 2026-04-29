@@ -39,4 +39,42 @@ describe("palette history", function()
     assert.equals(2, seen_limit)
     assert.same({ "explain @this", "fix @selection" }, prompts)
   end)
+
+  it("clamps fractional and negative limits before bridge request", function()
+    local seen_limit
+    bridge.initialize = function(_, callback)
+      callback({ ok = true })
+    end
+    bridge.request = function(_, params, callback)
+      seen_limit = params.limit
+      callback({ ok = true, result = { prompts = {} } })
+    end
+
+    history.recent({
+      ui = { palette = { history = { enabled = true, limit = 2.9 } } },
+    }, function(_) end)
+    assert.equals(2, seen_limit)
+
+    history.recent({
+      ui = { palette = { history = { enabled = true, limit = -3 } } },
+    }, function(_) end)
+    assert.equals(0, seen_limit)
+  end)
+
+  it("does not initialize the bridge when history is disabled", function()
+    local initialized = false
+    bridge.initialize = function()
+      initialized = true
+    end
+
+    local prompts
+    history.recent({
+      ui = { palette = { history = { enabled = false } } },
+    }, function(result)
+      prompts = result
+    end)
+
+    assert.is_false(initialized)
+    assert.same({}, prompts)
+  end)
 end)

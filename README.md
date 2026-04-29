@@ -46,6 +46,7 @@ Then use:
 
 ```vim
 :CodexWorkbenchAsk refactor @this
+:CodexWorkbenchChat
 :CodexWorkbenchThreads
 :CodexWorkbenchReview
 :CodexWorkbenchAccept all
@@ -75,6 +76,7 @@ under the cursor, and `h/x` works on the hunk under the cursor.
 ## Commands
 
 - `:CodexWorkbenchOpen`
+- `:CodexWorkbenchChat`
 - `:CodexWorkbenchAsk [prompt]`
 - `:CodexWorkbenchReview`
 - `:CodexWorkbenchThreads`
@@ -113,6 +115,24 @@ require("codex_workbench").setup({
     review = {
       layout = "vertical",  -- "vertical" | "horizontal"
     },
+    chat = {
+      enabled = true,
+      position = "right",   -- "right" | "tab"
+      width = 100,
+      threads_width = 30,
+      prompt_height = 5,
+      enter_submits = true,
+      cmp_source = true,    -- registers the optional nvim-cmp source
+    },
+    palette = {
+      enabled = true,
+      keymap = "<leader>cp",
+      templates = {},       -- user triggers override built-in triggers
+      history = {
+        enabled = true,     -- false also disables prompt persistence
+        limit = 50,         -- shown and retained prompt count
+      },
+    },
   },
 
   -- Session
@@ -142,6 +162,15 @@ require("codex_workbench").setup({
   statusline = { enabled = true },
 })
 ```
+
+When `nvim-cmp` is installed, setup registers a `codex_workbench` source for
+context markers such as `@this`, `@buffer`, `@selection`, `@diagnostics`,
+`@changes`, and `@file(`. Add `{ name = "codex_workbench" }` to your cmp
+sources to use it in prompt buffers.
+
+The palette uses Telescope, `snacks.picker.pick`, or fzf-lua when available and
+falls back to `vim.ui.select`. If a picker API is missing or incompatible, the
+fallback is used instead.
 
 ## Limitations
 
