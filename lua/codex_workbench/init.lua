@@ -38,8 +38,8 @@ function M.ask(prompt)
   local error_prompt = require("codex_workbench.ui.error_prompt")
 
   local function report(response)
-    -- Stop the progress toast first; otherwise the spinner keeps
-    -- rotating over the error notification.
+    -- Replace the progress toast with an error toast so the spinner
+    -- stops before showing the other error notification.
     require("codex_workbench.ui.progress").error("Error")
     log.write("ERROR", "bridge_error", response)
     vim.notify(

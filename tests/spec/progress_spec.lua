@@ -47,7 +47,24 @@ describe("progress toast", function()
     local buf = progress.buffer()
     local marks = vim.api.nvim_buf_get_extmarks(buf, -1, 0, -1, { details = true, hl_name = true })
 
+    assert.is_true(#marks > 0)
     assert.equals("CodexPending", marks[1][4].hl_group)
+  end)
+
+  it("uses the configured fade delay when done receives an option table without fade_ms", function()
+    progress.configure({ enabled = true, position = "bottom_right", fade_ms = 20 })
+    progress.set("Asking")
+    vim.wait(100, function()
+      return progress.window() ~= nil
+    end)
+    local win = progress.window()
+
+    progress.done("Done", { hl = "CodexAccepted" })
+
+    vim.wait(300, function()
+      return not vim.api.nvim_win_is_valid(win)
+    end)
+    assert.is_false(vim.api.nvim_win_is_valid(win))
   end)
 
   it("does not open a window when disabled", function()
@@ -73,5 +90,28 @@ describe("progress toast", function()
 
     assert.equals(before.relative, after.relative)
     assert.equals(before.width, after.width)
+  end)
+
+  it("only offsets top_right below a visible tabline", function()
+    local original_showtabline = vim.o.showtabline
+
+    vim.o.showtabline = 1
+    progress.configure({ enabled = true, position = "top_right", ascii_only = true })
+    progress.set("Asking")
+    vim.wait(100, function()
+      return progress.window() ~= nil
+    end)
+    assert.equals(0, vim.api.nvim_win_get_config(progress.window()).row)
+
+    progress.reset()
+    vim.o.showtabline = 2
+    progress.configure({ enabled = true, position = "top_right", ascii_only = true })
+    progress.set("Asking")
+    vim.wait(100, function()
+      return progress.window() ~= nil
+    end)
+    assert.equals(1, vim.api.nvim_win_get_config(progress.window()).row)
+
+    vim.o.showtabline = original_showtabline
   end)
 end)

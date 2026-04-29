@@ -72,7 +72,9 @@ end
 local function placement(width, opening)
   local row
   if M.opts.position == "top_right" then
-    row = vim.o.showtabline > 0 and 1 or 0
+    local showtabline = vim.o.showtabline
+    local tabline_visible = showtabline == 2 or (showtabline == 1 and #vim.api.nvim_list_tabpages() > 1)
+    row = tabline_visible and 1 or 0
   else
     row = math.max(0, vim.o.lines - 3)
   end
@@ -159,6 +161,18 @@ local function parse_label_opts(label, opts)
   return label, opts or {}
 end
 
+local function parse_done_opts(label_or_opts, delay_or_opts)
+  local label, opts = parse_label_opts(label_or_opts, type(delay_or_opts) == "table" and delay_or_opts or nil)
+  local fade_ms = opts.fade_ms
+  if fade_ms == nil and type(delay_or_opts) == "number" then
+    fade_ms = delay_or_opts
+  end
+  if type(fade_ms) ~= "number" then
+    fade_ms = M.opts.fade_ms
+  end
+  return label, opts, fade_ms
+end
+
 ---@param label string
 ---@param opts table|nil
 function M.set(label, opts)
@@ -188,9 +202,9 @@ function M.set(label, opts)
 end
 
 ---@param label_or_opts string|table|nil
----@param delay_ms integer|nil
-function M.done(label_or_opts, delay_ms)
-  local label, opts = parse_label_opts(label_or_opts, type(delay_ms) == "table" and delay_ms or nil)
+---@param delay_or_opts integer|table|nil
+function M.done(label_or_opts, delay_or_opts)
+  local label, opts, fade_ms = parse_done_opts(label_or_opts, delay_or_opts)
   schedule(function()
     if label and label ~= "" then
       M.state.label = label
@@ -202,8 +216,6 @@ function M.done(label_or_opts, delay_ms)
     stop_spinner()
     render()
 
-    local fade_ms = opts.fade_ms or delay_ms
-    fade_ms = fade_ms == nil and M.opts.fade_ms or fade_ms
     if fade_ms <= 0 then
       M.close()
       return
