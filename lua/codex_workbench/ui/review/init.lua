@@ -10,6 +10,8 @@ local M = {
     layout = "vertical",
     mode = "split",
     tree_width = 30,
+    pane_split = 50,
+    ascii_only = false,
     winbar = true,
   },
   current = nil,
@@ -19,6 +21,7 @@ local M = {
   tree_win = nil,
   before_win = nil,
   after_win = nil,
+  state_item_key = nil,
 }
 
 ---@param opts CodexWorkbenchReviewOpts|{}
@@ -35,7 +38,7 @@ local function sync_legacy_state()
   M.current = legacy.current
 end
 
-local function request_review_action(method, scope)
+local function request_review_action(method, scope, on_success)
   local log = require("codex_workbench.log")
   local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
@@ -44,6 +47,9 @@ local function request_review_action(method, scope)
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if response.ok then
       vim.cmd("checktime")
+      if on_success then
+        on_success(response)
+      end
     else
       -- Stop the spinner immediately on failure; on success the bridge
       -- emits its own progress.done event.
@@ -57,6 +63,13 @@ local function request_review_action(method, scope)
       error_prompt.show(response)
     end
   end)
+end
+
+local function redraw_diffview_state()
+  if M.opts.mode == "diffview" and M.parsed then
+    tree.render(M.parsed.files)
+    panes.show(M.parsed.files[tree.selected] or M.parsed.files[1])
+  end
 end
 
 local function record_local_state(method, scope)
@@ -90,12 +103,10 @@ local function record_local_state(method, scope)
 end
 
 local function review_action(method, scope)
-  record_local_state(method, scope)
-  request_review_action(method, scope)
-  if M.opts.mode == "diffview" and M.parsed then
-    tree.render(M.parsed.files)
-    panes.show(M.parsed.files[tree.selected] or M.parsed.files[1])
-  end
+  request_review_action(method, scope, function()
+    record_local_state(method, scope)
+    redraw_diffview_state()
+  end)
 end
 
 local function valid_win(win)
@@ -107,12 +118,16 @@ local function ensure_layout()
     return
   end
 
-  local after_width = math.max(30, math.floor((vim.o.columns - (tonumber(M.opts.tree_width) or 30)) / 2))
+  local tree_width = tonumber(M.opts.tree_width) or 30
+  local ratio = math.max(10, math.min(90, tonumber(M.opts.pane_split) or 50))
+  local content_width = math.max(60, vim.o.columns - tree_width)
+  local before_width = math.max(30, math.floor(content_width * ratio / 100))
+  local after_width = math.max(30, content_width - before_width)
   vim.cmd("botright vertical " .. after_width .. "new")
   M.after_win = vim.api.nvim_get_current_win()
-  vim.cmd("leftabove vertical " .. after_width .. "new")
+  vim.cmd("leftabove vertical " .. before_width .. "new")
   M.before_win = vim.api.nvim_get_current_win()
-  vim.cmd("leftabove vertical " .. (tonumber(M.opts.tree_width) or 30) .. "new")
+  vim.cmd("leftabove vertical " .. tree_width .. "new")
   M.tree_win = vim.api.nvim_get_current_win()
 
   tree.attach(M.tree_win)
@@ -202,6 +217,12 @@ local function set_common_keymaps(buf)
   map("[f", function()
     tree.select_next(-1)
   end)
+  map("]h", function()
+    tree.select_hunk_next(1)
+  end)
+  map("[h", function()
+    tree.select_hunk_next(-1)
+  end)
 end
 
 local function set_tree_keymaps()
@@ -240,6 +261,11 @@ end
 local function render_diffview(item)
   ensure_layout()
   M.current = item
+  local state_item_key = item and (item.id or item.turn_id or item.patch) or nil
+  if state_item_key ~= M.state_item_key then
+    state.reset()
+    M.state_item_key = state_item_key
+  end
   M.parsed = parse.parse(item and item.patch or "")
   tree.render(M.parsed.files)
   set_tree_keymaps()
@@ -279,6 +305,7 @@ function M._reset_for_tests()
   M.buf = nil
   M.win = nil
   M.parsed = nil
+  M.state_item_key = nil
 end
 
 return M

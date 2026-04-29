@@ -22,14 +22,20 @@ end
 function M.accept_file(path)
   state.accepted_files[path] = true
   state.rejected_files[path] = nil
+  state.accepted_hunks[path] = nil
+  state.rejected_hunks[path] = nil
 end
 
 function M.reject_file(path)
   state.rejected_files[path] = true
   state.accepted_files[path] = nil
+  state.accepted_hunks[path] = nil
+  state.rejected_hunks[path] = nil
 end
 
 function M.accept_hunk(path, hunk_index)
+  state.accepted_files[path] = nil
+  state.rejected_files[path] = nil
   ensure_set(state.accepted_hunks, path)[hunk_index] = true
   if state.rejected_hunks[path] then
     state.rejected_hunks[path][hunk_index] = nil
@@ -37,6 +43,8 @@ function M.accept_hunk(path, hunk_index)
 end
 
 function M.reject_hunk(path, hunk_index)
+  state.accepted_files[path] = nil
+  state.rejected_files[path] = nil
   ensure_set(state.rejected_hunks, path)[hunk_index] = true
   if state.accepted_hunks[path] then
     state.accepted_hunks[path][hunk_index] = nil
@@ -57,12 +65,19 @@ local function count(bucket, path, total)
   if bucket[path] then
     return total
   end
-  local set = bucket == state.accepted_files and state.accepted_hunks[path] or state.rejected_hunks[path]
-  local n = 0
-  for _ in pairs(set or {}) do
-    n = n + 1
+  local set
+  if bucket == state.accepted_files then
+    set = state.accepted_hunks[path]
+  else
+    set = state.rejected_hunks[path]
   end
-  return n
+  local n = 0
+  for index, value in pairs(set or {}) do
+    if value == true and type(index) == "number" and index >= 0 and index < total then
+      n = n + 1
+    end
+  end
+  return math.min(n, total)
 end
 
 ---@param file table
