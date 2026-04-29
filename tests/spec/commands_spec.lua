@@ -18,7 +18,10 @@ local function make_opts()
       output = { position = "right", size = 40 },
       review = { layout = "vertical" },
       inline = { enabled = true, auto_show = true },
+      progress = { enabled = false },
+      chat = { enabled = true, cmp_source = false },
     },
+    errors = { interactive = false, show_log_path = false },
     contexts = {},
     session = { auto_resume = false },
   }
@@ -107,6 +110,7 @@ describe("commands", function()
   describe("registration", function()
     local expected_commands = {
       "CodexWorkbenchOpen",
+      "CodexWorkbenchChat",
       "CodexWorkbenchAsk",
       "CodexWorkbenchReview",
       "CodexWorkbenchInline",
@@ -245,6 +249,18 @@ describe("commands", function()
       assert.equals("ask", captured_method)
       assert.is_nil(captured_params and captured_params.thread_id)
       assert.is_true(captured_params and captured_params.new_thread)
+    end)
+
+    it("retries the last ask payload", function()
+      bridge.state.thread_id = "thread-1"
+      bridge.state.phase = "ready"
+
+      vim.cmd("CodexWorkbenchAsk hello")
+      commands.retry_last()
+
+      assert.equals("ask", request_calls[#request_calls].method)
+      assert.equals("hello", request_calls[#request_calls].params.prompt)
+      assert.equals("thread-1", request_calls[#request_calls].params.thread_id)
     end)
   end)
 end)

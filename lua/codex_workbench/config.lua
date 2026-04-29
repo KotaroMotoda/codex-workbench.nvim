@@ -13,11 +13,27 @@ local M = {}
 ---@field layout "vertical"|"horizontal" Split direction for the review window (default: "vertical")
 ---@field mode "split"|"diffview" Review UI mode (default: "split")
 ---@field tree_width integer Width of the file tree pane in diffview mode (default: 30)
+---@field pane_split integer Before/after pane ratio in diffview mode (default: 50)
+---@field ascii_only boolean Use ASCII-only review symbols (default: false)
 ---@field winbar boolean Show key hints in review winbars (default: true)
+---@field signs boolean Show extmark signs in review panes (default: true)
+---@field badges boolean Show hunk badges in review tree (default: true)
+---@field ascii_only boolean Use ASCII review symbols in badges (default: false)
 
 ---@class CodexWorkbenchProgressOpts
 ---@field enabled boolean Show progress toast (default: true)
 ---@field position "bottom_right"|"top_right"|"off" Progress toast position (default: "bottom_right")
+---@field ascii_only boolean Use ASCII spinner frames (default: false)
+---@field fade_ms integer Milliseconds to keep done/error messages visible (default: 1500)
+
+---@class CodexWorkbenchChatOpts
+---@field enabled boolean Enable chat UI command (default: true)
+---@field position "right"|"tab" Chat UI placement (default: "right")
+---@field width integer Chat columns when position="right" (default: 100)
+---@field threads_width integer Thread sidebar columns (default: 30)
+---@field prompt_height integer Prompt split height (default: 5)
+---@field enter_submits boolean Submit with <CR> in prompt buffer (default: true)
+---@field cmp_source boolean Register nvim-cmp source when available (default: true)
 
 ---@class CodexWorkbenchInlineOpts
 ---@field enabled boolean Show small reviews inline in target buffers (default: true)
@@ -29,6 +45,7 @@ local M = {}
 
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
+---@field show_log_path boolean Include the log path in error notifications and prompts (default: true)
 
 ---@class CodexWorkbenchContextsEnabled
 ---@field this boolean Replace @this with current file and nearby lines (default: true)
@@ -64,11 +81,26 @@ M.defaults = {
       layout = "vertical",
       mode = "split",
       tree_width = 30,
+      pane_split = 50,
+      ascii_only = false,
       winbar = true,
+      signs = true,
+      badges = true,
     },
     progress = {
       enabled = true,
       position = "bottom_right",
+      ascii_only = false,
+      fade_ms = 1500,
+    },
+    chat = {
+      enabled = true,
+      position = "right",
+      width = 100,
+      threads_width = 30,
+      prompt_height = 5,
+      enter_submits = true,
+      cmp_source = true,
     },
     inline = {
       enabled = true,
@@ -81,6 +113,7 @@ M.defaults = {
   },
   errors = {
     interactive = true,
+    show_log_path = true,
   },
   session = {
     auto_resume = true,
@@ -108,7 +141,8 @@ M.defaults = {
 ---@param opts CodexWorkbenchOpts|nil
 ---@return CodexWorkbenchOpts
 function M.setup(opts)
-  return vim.tbl_deep_extend("force", M.defaults, opts or {})
+  M.current = vim.tbl_deep_extend("force", M.defaults, opts or {})
+  return M.current
 end
 
 return M

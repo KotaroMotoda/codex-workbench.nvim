@@ -4,9 +4,29 @@ local M = {}
 ---@return table
 function M.setup(opts)
   M.opts = require("codex_workbench.config").setup(opts)
-  require("codex_workbench.ui.review.highlights").setup()
+  local highlights = require("codex_workbench.ui.highlights")
+  highlights.setup()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("CodexWorkbenchHighlights", { clear = true }),
+    callback = highlights.setup,
+  })
   require("codex_workbench.ui.progress").configure(M.opts.ui.progress)
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = vim.api.nvim_create_augroup("CodexWorkbenchProgress", { clear = true }),
+    callback = function()
+      pcall(function()
+        require("codex_workbench.ui.progress").reposition()
+      end)
+    end,
+  })
   require("codex_workbench.ui.error_prompt").configure(M.opts.errors)
+  require("codex_workbench.ui.chat").configure(M.opts.ui.chat)
+  if M.opts.ui.chat and M.opts.ui.chat.cmp_source ~= false then
+    local has_cmp, cmp = pcall(require, "cmp")
+    if has_cmp then
+      cmp.register_source("codex_workbench", require("codex_workbench.ui.chat.cmp_source").new())
+    end
+  end
   require("codex_workbench.commands").register(M.opts)
   if M.opts.session.auto_resume then
     require("codex_workbench.bridge").initialize(M.opts)
@@ -21,19 +41,13 @@ function M.ask(prompt)
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
   local log = require("codex_workbench.log")
-  local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
 
   local function report(response)
-    -- Stop the progress toast first; otherwise the spinner keeps
-    -- rotating over the error notification.
-    require("codex_workbench.ui.progress").done("Error", 0)
+    -- Replace the progress toast with an error toast so the spinner
+    -- stops before showing the other error notification.
+    require("codex_workbench.ui.progress").error("Error")
     log.write("ERROR", "bridge_error", response)
-    vim.notify(
-      error_codes.format(response) .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
     error_prompt.show(response)
   end
 
@@ -48,7 +62,9 @@ function M.ask(prompt)
       report(init_response)
       return
     end
-    bridge.request("ask", { prompt = context.resolve(prompt or "", M.opts) }, function(response)
+    local payload = { prompt = context.resolve(prompt or "", M.opts) }
+    require("codex_workbench.commands").set_last_ask(payload)
+    bridge.request("ask", payload, function(response)
       if not response.ok then
         report(response)
       end
