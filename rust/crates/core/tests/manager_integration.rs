@@ -654,3 +654,98 @@ fn recovery_needed_event_emitted_when_pending_apply_exists() {
         .unwrap();
     assert_eq!(review_result["pending"], json!(null));
 }
+
+// ── stage_begin / stage_finalize (issue #44 / P0) ─────────────────────────────
+
+#[test]
+fn stage_begin_returns_shadow_path_and_stage_id() {
+    let mut env = TestEnv::setup();
+    let result = env
+        .call("stage_begin", json!({ "label": "codecompanion" }))
+        .unwrap();
+    let stage_id = result["stage_id"].as_str().unwrap().to_string();
+    assert!(stage_id.starts_with("codecompanion-"), "got {stage_id}");
+    let shadow_path = result["shadow_path"].as_str().unwrap();
+    assert!(
+        std::path::Path::new(shadow_path).exists(),
+        "shadow path {shadow_path} should exist"
+    );
+}
+
+#[test]
+fn stage_finalize_creates_review_when_shadow_has_diff() {
+    let mut env = TestEnv::setup();
+    let begin = env.call("stage_begin", json!({})).unwrap();
+    let stage_id = begin["stage_id"].as_str().unwrap().to_string();
+    let shadow_path = std::path::PathBuf::from(begin["shadow_path"].as_str().unwrap());
+
+    // Simulate an external (codecompanion) tool writing into the shadow.
+    std::fs::write(shadow_path.join("note.txt"), "hello from extension\n").unwrap();
+
+    let result = env
+        .call("stage_finalize", json!({ "stage_id": stage_id }))
+        .unwrap();
+    assert_eq!(result["has_review"], json!(true));
+    assert!(
+        env.sink.has_event("review_created"),
+        "expected review_created event, got {:?}",
+        env.sink.event_names()
+    );
+
+    let review = env.call("review", json!({})).unwrap();
+    assert!(review["pending"].is_object());
+}
+
+#[test]
+fn stage_finalize_without_diff_returns_no_review() {
+    let mut env = TestEnv::setup();
+    let begin = env.call("stage_begin", json!({})).unwrap();
+    let stage_id = begin["stage_id"].as_str().unwrap().to_string();
+    let result = env
+        .call("stage_finalize", json!({ "stage_id": stage_id }))
+        .unwrap();
+    assert_eq!(result["has_review"], json!(false));
+}
+
+#[test]
+fn stage_finalize_without_begin_returns_no_active_stage() {
+    let mut env = TestEnv::setup();
+    let err = env.call("stage_finalize", json!({})).unwrap_err();
+    let code = err.downcast_ref::<BridgeError>().map(|e| e.code());
+    assert_eq!(code, Some("no_active_stage"));
+}
+
+#[test]
+fn stage_finalize_with_wrong_id_keeps_stage_active() {
+    let mut env = TestEnv::setup();
+    env.call("stage_begin", json!({})).unwrap();
+    let err = env
+        .call("stage_finalize", json!({ "stage_id": "bogus-id" }))
+        .unwrap_err();
+    let code = err.downcast_ref::<BridgeError>().map(|e| e.code());
+    assert_eq!(code, Some("no_active_stage"));
+
+    // Calling without a stage_id should still finalize the active stage.
+    let result = env.call("stage_finalize", json!({})).unwrap();
+    assert_eq!(result["has_review"], json!(false));
+}
+
+#[cfg(not(feature = "codex"))]
+#[test]
+fn ask_without_injected_app_server_errors_when_codex_backend_disabled() {
+    let mut env = TestEnv::setup();
+    let err = env
+        .call("ask", json!({ "prompt": "hello", "new_thread": true }))
+        .unwrap_err();
+    let code = err.downcast_ref::<BridgeError>().map(|e| e.code());
+    assert_eq!(code, Some("codex_backend_disabled"));
+}
+
+#[test]
+fn stage_begin_rejects_concurrent_stage() {
+    let mut env = TestEnv::setup();
+    env.call("stage_begin", json!({})).unwrap();
+    let err = env.call("stage_begin", json!({})).unwrap_err();
+    let code = err.downcast_ref::<BridgeError>().map(|e| e.code());
+    assert_eq!(code, Some("review_pending"));
+}

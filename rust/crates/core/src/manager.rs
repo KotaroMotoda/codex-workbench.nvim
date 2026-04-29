@@ -7,13 +7,15 @@ use std::sync::mpsc::Receiver;
 use anyhow::{anyhow, Result};
 use codex_workbench_protocol::{
     AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, RecentPromptsParams,
-    ScopeParams, ThreadIdParams, ThreadMessagesParams,
+    ScopeParams, StageBeginParams, StageFinalizeParams, ThreadIdParams, ThreadMessagesParams,
 };
 use fs2::FileExt as _;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::app_server::{AppServer, AppServerClient};
+use crate::app_server::AppServer;
+#[cfg(feature = "codex")]
+use crate::app_server::AppServerClient;
 use crate::git::{GitInvocationError, GitRepo};
 use crate::review::{files_from_patch, patch_for_scope, remaining_after_scope};
 use crate::shadow::ShadowWorkspace;
@@ -44,9 +46,24 @@ pub struct Manager {
     state: SessionState,
     state_path: Option<PathBuf>,
     app_server: Option<Box<dyn AppServer>>,
+    /// Active external stage tracked between `stage_begin` and `stage_finalize`.
+    ///
+    /// Not persisted to disk — if the bridge restarts mid-stage, the caller
+    /// must restart the stage. This trades crash-safety for simplicity, which
+    /// is acceptable because external stages are short-lived (one tool call).
+    active_stage: Option<ExternalStage>,
     /// Exclusive lock file held for the lifetime of this Manager instance.
     /// Dropping the Manager automatically releases the lock.
     _lock: Option<File>,
+}
+
+/// In-flight external write transaction (issue #44 / P0).
+#[derive(Debug, Clone)]
+struct ExternalStage {
+    stage_id: String,
+    base_tree: String,
+    base_head: String,
+    real_fingerprint: String,
 }
 
 impl Default for Manager {
@@ -64,6 +81,7 @@ impl Manager {
             state: SessionState::default(),
             state_path: None,
             app_server: None,
+            active_stage: None,
             _lock: None,
         }
     }
@@ -119,6 +137,16 @@ impl Manager {
             "resume" => self.resume(request.params),
             "fork" => self.fork(),
             "abandon_review" => self.abandon_review(sink),
+            "stage_begin" => {
+                let params: StageBeginParams =
+                    serde_json::from_value(request.params).unwrap_or_default();
+                self.stage_begin(params)
+            }
+            "stage_finalize" => {
+                let params: StageFinalizeParams =
+                    serde_json::from_value(request.params).unwrap_or_default();
+                self.stage_finalize(params, sink)
+            }
             "status" => self.status(),
             "health" => self.health(),
             "approval_response" => Ok(json!({ "ignored": true })),
@@ -551,6 +579,106 @@ impl Manager {
         Ok(json!({ "abandoned": true }))
     }
 
+    /// Begin a backend-neutral external write stage (issue #44 / P0).
+    ///
+    /// Mirrors the prep half of [`Self::ask`] without invoking the AppServer:
+    /// syncs the shadow worktree from the real workspace, captures a base tree
+    /// and fingerprint, and records an [`ExternalStage`]. The caller (typically
+    /// a codecompanion extension) is then expected to write file edits into
+    /// `shadow_path` and finally invoke `stage_finalize` to materialize the
+    /// resulting diff as a `ReviewItem`.
+    fn stage_begin(&mut self, params: StageBeginParams) -> Result<Value> {
+        self.ensure_no_pending_review()?;
+        if self.active_stage.is_some() {
+            return Err(anyhow!(BridgeError::ReviewPending));
+        }
+        let config = self.config()?.clone();
+        let real = self.real()?.clone();
+        let shadow = self.shadow()?.clone();
+
+        let sync = shadow.sync_from_real(
+            &real,
+            config.max_untracked_file_bytes,
+            config.max_untracked_total_bytes,
+        )?;
+        let warnings = sync.warnings;
+
+        let shadow_repo = shadow.shadow_repo();
+        let base_tree = shadow_repo.write_worktree_tree()?;
+        let base_head = real.head()?;
+        let real_fingerprint = real.fingerprint(
+            config.max_untracked_file_bytes,
+            config.max_untracked_total_bytes,
+        )?;
+        let label = params.label.as_deref().unwrap_or("external");
+        let stage_id = format!("{label}-{}", now_unix());
+        self.active_stage = Some(ExternalStage {
+            stage_id: stage_id.clone(),
+            base_tree,
+            base_head,
+            real_fingerprint,
+        });
+        Ok(json!({
+            "stage_id": stage_id,
+            "shadow_path": shadow.shadow_path.to_string_lossy().to_string(),
+            "warnings": warnings,
+        }))
+    }
+
+    /// Finalize the in-flight external stage by diffing the shadow worktree
+    /// against the captured base tree. When the diff is non-empty, a
+    /// [`ReviewItem`] is created and a `review_created` event is emitted —
+    /// from this point onward the existing accept/reject flow takes over.
+    fn stage_finalize(
+        &mut self,
+        params: StageFinalizeParams,
+        sink: &mut dyn EventSink,
+    ) -> Result<Value> {
+        let stage = self
+            .active_stage
+            .take()
+            .ok_or_else(|| anyhow!(BridgeError::NoActiveStage))?;
+        if let Some(expected) = params.stage_id.as_deref() {
+            if expected != stage.stage_id {
+                // Restore so callers can recover by retrying with the right id.
+                self.active_stage = Some(stage);
+                return Err(anyhow!(BridgeError::NoActiveStage));
+            }
+        }
+
+        let real = self.real()?.clone();
+        let shadow = self.shadow()?.clone();
+        let shadow_repo = shadow.shadow_repo();
+        let patch = shadow_repo.diff_tree_to_worktree(&stage.base_tree)?;
+        let has_review = !patch.trim().is_empty();
+        if has_review {
+            let review = ReviewItem {
+                id: format!("{}-{}", stage.stage_id, now_unix()),
+                turn_id: stage.stage_id.clone(),
+                base_head: stage.base_head,
+                real_head: real.head()?,
+                shadow_head: shadow_repo.head()?,
+                base_tree: stage.base_tree,
+                real_fingerprint: stage.real_fingerprint,
+                files: files_from_patch(&patch),
+                patch,
+                created_at: now_unix(),
+                status: ReviewStatus::Pending,
+                error: None,
+            };
+            self.state.reviews.push(review.clone());
+            self.save_state()?;
+            sink.emit(BridgeEvent::new(
+                "review_created",
+                json!({ "item": review }),
+            ));
+        }
+        Ok(json!({
+            "stage_id": stage.stage_id,
+            "has_review": has_review,
+        }))
+    }
+
     fn status(&self) -> Result<Value> {
         Ok(json!({
             "initialized": self.real.is_some(),
@@ -652,10 +780,22 @@ impl Manager {
         Ok(self.app_server.as_deref_mut().unwrap())
     }
 
+    #[cfg(feature = "codex")]
     fn ensure_app_server(&mut self) -> Result<()> {
         if self.app_server.is_none() {
             let codex_cmd = self.config()?.codex_cmd.clone();
             self.app_server = Some(Box::new(AppServerClient::spawn(&codex_cmd)?));
+        }
+        Ok(())
+    }
+
+    /// Without the `codex` feature, the bridge has no built-in way to spawn an
+    /// AppServer. Tests and external integrations must inject one via
+    /// [`Manager::inject_app_server`] before calling Codex-flavored methods.
+    #[cfg(not(feature = "codex"))]
+    fn ensure_app_server(&mut self) -> Result<()> {
+        if self.app_server.is_none() {
+            return Err(anyhow!(BridgeError::CodexBackendDisabled));
         }
         Ok(())
     }

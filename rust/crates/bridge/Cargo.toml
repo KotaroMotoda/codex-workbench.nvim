@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["codex"]
+codex = ["codex-workbench-core/codex"]
+
 [dependencies]
 anyhow.workspace = true
-codex-workbench-core = { path = "../core" }
+codex-workbench-core = { path = "../core", default-features = false }
 codex-workbench-protocol = { path = "../protocol" }
 serde.workspace = true
 serde_json.workspace = true
