@@ -49,6 +49,28 @@ end
 
 assert(type(require("codex_workbench.context").snapshot) == "function", "context.snapshot must exist")
 
+do
+  local review = require("codex_workbench.ui.review")
+  review.configure({ mode = "diffview", tree_width = 24, pane_split = 50, winbar = false })
+  review.render({
+    id = "smoke-review",
+    turn_id = "smoke-turn",
+    status = "pending",
+    files = {},
+    patch = table.concat({
+      "diff --git a/smoke.lua b/smoke.lua",
+      "--- a/smoke.lua",
+      "+++ b/smoke.lua",
+      "@@ -1 +1 @@",
+      "-return 1",
+      "+return 2",
+    }, "\n"),
+  })
+  assert(review.current_file() == "smoke.lua", "diffview review should select the first patch file")
+  review._reset_for_tests()
+  review.configure({ mode = "split" })
+end
+
 for _, command in ipairs({
   "CodexWorkbenchOpen",
   "CodexWorkbenchAsk",
