@@ -1,6 +1,7 @@
 local parse = require("codex_workbench.ui.review.parse")
 local panes = require("codex_workbench.ui.review.panes")
 local review = require("codex_workbench.ui.review")
+local tree = require("codex_workbench.ui.review.tree")
 local highlights = require("codex_workbench.ui.review.highlights")
 
 local sample_patch = table.concat({
@@ -22,6 +23,15 @@ local function close_win(win)
   if win and vim.api.nvim_win_is_valid(win) then
     vim.api.nvim_win_close(win, true)
   end
+end
+
+local function win_for_buf(buf)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == buf then
+      return win
+    end
+  end
+  return nil
 end
 
 describe("review diffview", function()
@@ -138,6 +148,37 @@ describe("review diffview", function()
 
     vim.cmd("normal ]h")
     path, hunk = review.current_hunk()
+    assert.equals("src/a.lua", path)
+    assert.equals(1, hunk)
+
+    local before_buf, after_buf = panes.buffers()
+    assert.equals(4, vim.api.nvim_win_get_cursor(win_for_buf(before_buf))[1])
+    assert.equals(4, vim.api.nvim_win_get_cursor(win_for_buf(after_buf))[1])
+  end)
+
+  it("uses the last focused pane hunk when actions run from the tree", function()
+    local patch = table.concat({
+      "diff --git a/src/a.lua b/src/a.lua",
+      "--- a/src/a.lua",
+      "+++ b/src/a.lua",
+      "@@ -1 +1 @@",
+      "-local a = 1",
+      "+local a = 2",
+      "@@ -10 +10 @@",
+      "-local b = 1",
+      "+local b = 2",
+    }, "\n")
+    review.configure({ mode = "diffview", tree_width = 24, winbar = false })
+    review.render({ id = "r1", turn_id = "t1", status = "pending", files = {}, patch = patch })
+
+    local before_buf = panes.buffers()
+    local before_win = win_for_buf(before_buf)
+    vim.api.nvim_set_current_win(before_win)
+    vim.api.nvim_win_set_cursor(before_win, { 4, 0 })
+    vim.cmd("doautocmd <nomodeline> CursorMoved")
+
+    vim.api.nvim_set_current_win(tree.window())
+    local path, hunk = review.current_hunk()
     assert.equals("src/a.lua", path)
     assert.equals(1, hunk)
   end)

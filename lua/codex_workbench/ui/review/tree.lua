@@ -186,11 +186,17 @@ function M.current_hunk()
   if not file or #(file.hunks or {}) == 0 then
     return nil
   end
+  local function remember(hunk)
+    if hunk ~= nil then
+      M.selected_hunks[file.path] = hunk
+    end
+    return hunk
+  end
   if M.win and vim.api.nvim_get_current_win() == M.win then
-    return M.selected_hunks[file.path] or 0
+    return remember(panes.last_focused_hunk()) or M.selected_hunks[file.path] or 0
   end
   local hunk = panes.current_hunk()
-  return hunk or M.selected_hunks[file.path] or 0
+  return remember(hunk) or M.selected_hunks[file.path] or 0
 end
 
 function M.buffer()
