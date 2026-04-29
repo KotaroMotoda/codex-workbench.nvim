@@ -13,10 +13,10 @@ function source:get_keyword_pattern()
 end
 
 function source:complete(_, callback)
-  local enabled = require("codex_workbench.config").setup({}).contexts.enabled
+  local enabled = vim.tbl_deep_extend("force", {}, require("codex_workbench.config").defaults.contexts.enabled)
   local runtime = require("codex_workbench").opts
   if runtime and runtime.contexts and runtime.contexts.enabled then
-    enabled = runtime.contexts.enabled
+    enabled = vim.tbl_deep_extend("force", enabled, runtime.contexts.enabled)
   end
 
   local items = {}

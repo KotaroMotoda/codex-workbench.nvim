@@ -14,11 +14,15 @@ local function text(value)
   return nil
 end
 
+local function thread_id(item)
+  return text(item.id) or text(item.thread_id)
+end
+
 local function label(item)
   if item.new_thread then
     return item.label or "New thread"
   end
-  local title = text(item.name) or text(item.preview) or text(item.id) or "(untitled)"
+  local title = text(item.name) or text(item.preview) or thread_id(item) or "(untitled)"
   local meta = {}
   local status = text(item.status)
   local source = text(item.source)
@@ -45,7 +49,7 @@ function M.select(payload, callback)
   }
   local seen = {}
   for _, thread in ipairs(payload.threads or {}) do
-    local id = text(thread.id)
+    local id = thread_id(thread)
     if id and not seen[id] then
       seen[id] = true
       local choice = vim.tbl_extend("force", {}, thread)
@@ -79,10 +83,13 @@ function M.sidebar_items(payload)
   }
   local seen = {}
   for _, thread in ipairs(payload.threads or {}) do
-    local id = text(thread.id)
+    local id = thread_id(thread)
     if id and not seen[id] then
       seen[id] = true
-      table.insert(items, vim.tbl_extend("force", { label = label(thread) }, thread))
+      local item = vim.tbl_extend("force", {}, thread)
+      item.id = id
+      item.label = label(item)
+      table.insert(items, item)
     end
   end
   return items

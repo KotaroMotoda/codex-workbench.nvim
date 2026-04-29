@@ -50,6 +50,7 @@ impl EventSink for RecordingSink {
 /// Configurable mock that records calls and returns canned responses.
 struct MockAppServer {
     thread_id: Option<String>,
+    delete_response: Value,
     /// If set, `run_turn` writes this (filename, content) pair into `cwd`
     /// so that a diff is produced and a review item is created.
     write_file_on_turn: Option<(String, String)>,
@@ -59,8 +60,14 @@ impl MockAppServer {
     fn new() -> Self {
         Self {
             thread_id: None,
+            delete_response: json!({ "deleted": true }),
             write_file_on_turn: None,
         }
+    }
+
+    fn with_delete_response(mut self, response: Value) -> Self {
+        self.delete_response = response;
+        self
     }
 
     /// Configure the mock to write a file into the shadow repo on `run_turn`,
@@ -110,10 +117,15 @@ impl AppServer for MockAppServer {
     }
 
     fn delete_thread(&mut self, thread_id: &str) -> Result<Value> {
-        if self.thread_id.as_deref() == Some(thread_id) {
+        let deleted = self
+            .delete_response
+            .get("deleted")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if deleted && self.thread_id.as_deref() == Some(thread_id) {
             self.thread_id = None;
         }
-        Ok(json!({ "deleted": true }))
+        Ok(self.delete_response.clone())
     }
 
     fn resume_thread(&mut self, thread_id: &str, _cwd: &Path) -> Result<String> {
@@ -442,6 +454,24 @@ fn thread_delete_clears_current_thread_id() {
 
     let status = env.call("status", json!({})).unwrap();
     assert_eq!(status["thread_id"], json!(null));
+}
+
+#[test]
+fn thread_delete_returns_app_server_deleted_flag() {
+    let mut env = TestEnv::setup();
+    env.manager.inject_app_server(Box::new(
+        MockAppServer::new().with_delete_response(json!({ "deleted": false })),
+    ));
+
+    env.call("ask", json!({ "prompt": "p", "new_thread": true }))
+        .unwrap();
+    let result = env
+        .call("thread/delete", json!({ "thread_id": "mock-thread-1" }))
+        .unwrap();
+    assert_eq!(result["deleted"], json!(false));
+
+    let status = env.call("status", json!({})).unwrap();
+    assert_eq!(status["thread_id"], json!("mock-thread-1"));
 }
 
 #[test]

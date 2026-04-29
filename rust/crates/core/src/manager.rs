@@ -362,13 +362,17 @@ impl Manager {
             .as_mut()
             .unwrap()
             .delete_thread(&params.thread_id)?;
-        if self.state.thread_id.as_deref() == Some(params.thread_id.as_str()) {
+        let deleted = result
+            .get("deleted")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if deleted && self.state.thread_id.as_deref() == Some(params.thread_id.as_str()) {
             self.state.thread_id = None;
             self.save_state()?;
         }
         Ok(json!({
             "thread_id": params.thread_id,
-            "deleted": true,
+            "deleted": deleted,
             "raw": result,
         }))
     }
