@@ -64,6 +64,21 @@ describe("thread_picker.select", function()
     assert.equals("thread-99", selected_id)
   end)
 
+  it("uses thread_id when id is missing", function()
+    local selected_id = nil
+    vim.ui.select = function(items, _, callback)
+      callback(items[2])
+    end
+
+    thread_picker.select({
+      project = { workspace = "/tmp", current_thread_id = vim.NIL },
+      threads = { make_thread({ id = vim.NIL, thread_id = "thread-from-api" }) },
+    }, function(sel)
+      selected_id = sel and sel.thread_id
+    end)
+    assert.equals("thread-from-api", selected_id)
+  end)
+
   it("format_item includes the preview text", function()
     local captured_opts = nil
     vim.ui.select = function(_, opts, callback)
@@ -82,5 +97,23 @@ describe("thread_picker.select", function()
       rendered:find("my preview", 1, true) ~= nil,
       "format_item should include preview: " .. tostring(rendered)
     )
+  end)
+
+  it("builds sidebar items from thread_id and computed labels", function()
+    local items = thread_picker.sidebar_items({
+      threads = {
+        make_thread({
+          id = vim.NIL,
+          thread_id = "thread-from-api",
+          label = "server supplied label",
+          preview = "computed preview",
+        }),
+      },
+    })
+
+    assert.equals(2, #items)
+    assert.equals("thread-from-api", items[2].id)
+    assert.is_true(items[2].label:find("computed preview", 1, true) ~= nil)
+    assert.is_nil(items[2].label:find("server supplied label", 1, true))
   end)
 end)

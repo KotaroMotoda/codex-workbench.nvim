@@ -26,6 +26,15 @@ local M = {}
 ---@field ascii_only boolean Use ASCII spinner frames (default: false)
 ---@field fade_ms integer Milliseconds to keep done/error messages visible (default: 1500)
 
+---@class CodexWorkbenchChatOpts
+---@field enabled boolean Enable chat UI command (default: true)
+---@field position "right"|"tab" Chat UI placement (default: "right")
+---@field width integer Chat columns when position="right" (default: 100)
+---@field threads_width integer Thread sidebar columns (default: 30)
+---@field prompt_height integer Prompt split height (default: 5)
+---@field enter_submits boolean Submit with <CR> in prompt buffer (default: true)
+---@field cmp_source boolean Register nvim-cmp source when available (default: true)
+
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
 ---@field show_log_path boolean Include the log path in error notifications and prompts (default: true)
@@ -75,6 +84,15 @@ M.defaults = {
       position = "bottom_right",
       ascii_only = false,
       fade_ms = 1500,
+    },
+    chat = {
+      enabled = true,
+      position = "right",
+      width = 100,
+      threads_width = 30,
+      prompt_height = 5,
+      enter_submits = true,
+      cmp_source = true,
     },
   },
   errors = {

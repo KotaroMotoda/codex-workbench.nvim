@@ -7,6 +7,7 @@ use std::sync::mpsc::Receiver;
 use anyhow::{anyhow, Result};
 use codex_workbench_protocol::{
     AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, ScopeParams,
+    ThreadIdParams, ThreadMessagesParams,
 };
 use fs2::FileExt as _;
 use serde_json::{json, Value};
@@ -94,6 +95,14 @@ impl Manager {
             }
             "review" => self.review(),
             "threads" => self.threads(),
+            "thread/messages" => {
+                let params: ThreadMessagesParams = serde_json::from_value(request.params)?;
+                self.thread_messages(params)
+            }
+            "thread/delete" => {
+                let params: ThreadIdParams = serde_json::from_value(request.params)?;
+                self.delete_thread(params)
+            }
             "accept" => {
                 let params: ScopeParams = serde_json::from_value(request.params)?;
                 self.accept(&params.scope, sink)
@@ -308,6 +317,63 @@ impl Manager {
                 "current_thread_id": &self.state.thread_id,
             },
             "threads": threads,
+        }))
+    }
+
+    fn thread_messages(&mut self, params: ThreadMessagesParams) -> Result<Value> {
+        self.ensure_app_server()?;
+        let result = self
+            .app_server
+            .as_mut()
+            .unwrap()
+            .thread_messages(&params.thread_id, params.limit)?;
+        let raw = result
+            .get("messages")
+            .or_else(|| result.get("data"))
+            .or_else(|| result.get("items"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let start = raw.len().saturating_sub(params.limit);
+        let messages = raw
+            .into_iter()
+            .skip(start)
+            .map(|message| {
+                json!({
+                    "role": message.get("role")
+                        .or_else(|| message.get("type"))
+                        .or_else(|| message.get("author"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("message"),
+                    "text": message_text(&message),
+                })
+            })
+            .collect::<Vec<_>>();
+        Ok(json!({
+            "thread_id": params.thread_id,
+            "messages": messages,
+        }))
+    }
+
+    fn delete_thread(&mut self, params: ThreadIdParams) -> Result<Value> {
+        self.ensure_app_server()?;
+        let result = self
+            .app_server
+            .as_mut()
+            .unwrap()
+            .delete_thread(&params.thread_id)?;
+        let deleted = result
+            .get("deleted")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if deleted && self.state.thread_id.as_deref() == Some(params.thread_id.as_str()) {
+            self.state.thread_id = None;
+            self.save_state()?;
+        }
+        Ok(json!({
+            "thread_id": params.thread_id,
+            "deleted": deleted,
+            "raw": result,
         }))
     }
 
@@ -656,4 +722,33 @@ fn source_label(value: &Value) -> Option<&str> {
             .and_then(Value::as_str)
             .or_else(|| value.get("subAgent").map(|_| "subAgent"))
     })
+}
+
+fn message_text(value: &Value) -> String {
+    if let Some(text) = value
+        .get("text")
+        .or_else(|| value.get("content"))
+        .or_else(|| value.get("message"))
+        .and_then(Value::as_str)
+    {
+        return text.to_string();
+    }
+    if let Some(items) = value
+        .get("content")
+        .or_else(|| value.get("items"))
+        .and_then(Value::as_array)
+    {
+        let parts = items
+            .iter()
+            .filter_map(|item| {
+                item.get("text")
+                    .or_else(|| item.get("content"))
+                    .and_then(Value::as_str)
+            })
+            .collect::<Vec<_>>();
+        if !parts.is_empty() {
+            return parts.join("\n");
+        }
+    }
+    String::new()
 }
