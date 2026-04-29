@@ -1,18 +1,28 @@
-use std::collections::VecDeque;
-use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::Receiver;
-use std::sync::{Arc, Mutex};
-use std::thread;
 
-use anyhow::{anyhow, Context, Result};
-use codex_workbench_protocol::{
-    ApprovalResponseParams, BridgeError, BridgeEvent, BridgeRequest, BridgeResponse,
-};
-use serde_json::{json, Value};
+use anyhow::Result;
+use codex_workbench_protocol::BridgeRequest;
+use serde_json::Value;
 
 use crate::manager::EventSink;
+
+#[cfg(feature = "codex")]
+use anyhow::{anyhow, Context};
+#[cfg(feature = "codex")]
+use codex_workbench_protocol::{ApprovalResponseParams, BridgeError, BridgeEvent, BridgeResponse};
+#[cfg(feature = "codex")]
+use serde_json::json;
+#[cfg(feature = "codex")]
+use std::collections::VecDeque;
+#[cfg(feature = "codex")]
+use std::io::{BufRead, BufReader, Write};
+#[cfg(feature = "codex")]
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+#[cfg(feature = "codex")]
+use std::sync::{Arc, Mutex};
+#[cfg(feature = "codex")]
+use std::thread;
 
 /// Abstraction over the Codex app-server connection.
 ///
@@ -37,6 +47,7 @@ pub trait AppServer {
     ) -> Result<String>;
 }
 
+#[cfg(feature = "codex")]
 pub struct AppServerClient {
     child: Child,
     stdin: ChildStdin,
@@ -46,6 +57,7 @@ pub struct AppServerClient {
     thread_id: Option<String>,
 }
 
+#[cfg(feature = "codex")]
 impl AppServerClient {
     pub fn spawn(codex_cmd: &str) -> Result<Self> {
         let mut child = Command::new(codex_cmd)
@@ -411,6 +423,7 @@ impl AppServerClient {
     }
 }
 
+#[cfg(feature = "codex")]
 impl AppServer for AppServerClient {
     fn thread_id(&self) -> Option<&str> {
         AppServerClient::thread_id(self)
@@ -455,12 +468,14 @@ impl AppServer for AppServerClient {
     }
 }
 
+#[cfg(feature = "codex")]
 impl Drop for AppServerClient {
     fn drop(&mut self) {
         let _ = self.child.kill();
     }
 }
 
+#[cfg(feature = "codex")]
 fn wait_for_approval(
     rx: &Receiver<BridgeRequest>,
     approval_id: &str,
@@ -512,6 +527,7 @@ fn wait_for_approval(
     }
 }
 
+#[cfg(feature = "codex")]
 fn response_result(message: Value) -> Result<Value> {
     if let Some(error) = message.get("error") {
         let (code, message_text) = parse_remote_error(error);
@@ -528,6 +544,7 @@ fn response_result(message: Value) -> Result<Value> {
 /// error object. We intentionally avoid forwarding `data` or unknown nested
 /// fields so that secrets and large blobs do not bleed into user-facing
 /// notifications.
+#[cfg(feature = "codex")]
 fn parse_remote_error(error: &Value) -> (Option<i64>, String) {
     let code = error.get("code").and_then(Value::as_i64);
     let message = error
@@ -551,6 +568,7 @@ fn parse_remote_error(error: &Value) -> (Option<i64>, String) {
 /// meaningful here — the bridge error payload is the only information we
 /// forward — and preserving it would require boxing the original error as a
 /// source, complicating `classify` at the outer boundary for no user benefit.
+#[cfg(feature = "codex")]
 fn label_app_server_error(err: anyhow::Error, method: &str) -> anyhow::Error {
     if let Some(BridgeError::AppServerError {
         method: existing,
@@ -569,18 +587,21 @@ fn label_app_server_error(err: anyhow::Error, method: &str) -> anyhow::Error {
     err
 }
 
+#[cfg(feature = "codex")]
 fn extract_thread_id(value: &Value) -> Option<String> {
     find_key(value, "thread")
         .and_then(|thread| find_string(thread, &["id", "threadId"]))
         .or_else(|| find_string(value, &["threadId"]))
 }
 
+#[cfg(feature = "codex")]
 fn extract_turn_id(value: &Value) -> Option<String> {
     find_key(value, "turn")
         .and_then(|turn| find_string(turn, &["id", "turnId"]))
         .or_else(|| find_string(value, &["turnId"]))
 }
 
+#[cfg(feature = "codex")]
 fn agent_message_text(value: &Value) -> Option<String> {
     let item = value.pointer("/params/item")?;
     let item_type = item.get("type").and_then(Value::as_str)?;
@@ -593,6 +614,7 @@ fn agent_message_text(value: &Value) -> Option<String> {
         .or_else(|| find_string(item, &["text"]))
 }
 
+#[cfg(feature = "codex")]
 fn turn_error_message(value: &Value) -> Option<String> {
     let turn = value
         .pointer("/params/turn")
@@ -605,7 +627,7 @@ fn turn_error_message(value: &Value) -> Option<String> {
     Some(message)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "codex"))]
 mod approval_tests {
     use super::*;
     use std::sync::mpsc;
@@ -674,6 +696,7 @@ mod approval_tests {
     }
 }
 
+#[cfg(feature = "codex")]
 fn summarize_notification(method: &str, message: &Value) -> Value {
     let params = message.get("params").unwrap_or(&Value::Null);
     let thread_id = params.get("threadId").and_then(Value::as_str);
@@ -720,10 +743,12 @@ fn summarize_notification(method: &str, message: &Value) -> Value {
     }
 }
 
+#[cfg(feature = "codex")]
 fn summarize_json(value: &Value, max_chars: usize) -> String {
     truncate(&value.to_string(), max_chars)
 }
 
+#[cfg(feature = "codex")]
 fn truncate(text: &str, max_chars: usize) -> String {
     let mut out = String::with_capacity(max_chars.min(text.len()));
     for (idx, ch) in text.chars().enumerate() {
@@ -736,6 +761,7 @@ fn truncate(text: &str, max_chars: usize) -> String {
     out
 }
 
+#[cfg(feature = "codex")]
 fn drain_stderr(stderr: std::process::ChildStderr, tail: Arc<Mutex<VecDeque<String>>>) {
     thread::spawn(move || {
         for line in BufReader::new(stderr).lines().map_while(|line| line.ok()) {
@@ -749,6 +775,7 @@ fn drain_stderr(stderr: std::process::ChildStderr, tail: Arc<Mutex<VecDeque<Stri
     });
 }
 
+#[cfg(feature = "codex")]
 fn find_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     match value {
         Value::Object(map) => {
@@ -762,6 +789,7 @@ fn find_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     }
 }
 
+#[cfg(feature = "codex")]
 fn find_string(value: &Value, keys: &[&str]) -> Option<String> {
     match value {
         Value::Object(map) => {
@@ -777,6 +805,7 @@ fn find_string(value: &Value, keys: &[&str]) -> Option<String> {
     }
 }
 
+#[cfg(feature = "codex")]
 fn approval_id(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
@@ -784,7 +813,7 @@ fn approval_id(value: &Value) -> String {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "codex"))]
 mod tests {
     use super::*;
 

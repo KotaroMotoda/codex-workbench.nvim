@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Structured JSONL logging with human-readable `:CodexWorkbenchLogs` view
   - LuaCATS type annotations on public APIs (`init.lua`, `bridge.lua`, `error_codes.lua`)
   - 2-second timeout on `git diff` subprocess in context resolution
+- Backend-neutral bridge groundwork (issue #44, P0)
+  - `codex` cargo feature (default on); `--no-default-features` builds the bridge without the Codex app-server client
+  - `stage_begin` / `stage_finalize` bridge methods for backend-neutral external write transactions (codecompanion shadow-review extension)
+  - `BridgeError::CodexBackendDisabled` and `BridgeError::NoActiveStage` variants with matching Lua localizations
 
 ## [0.1.0] - 2025-01-01
 

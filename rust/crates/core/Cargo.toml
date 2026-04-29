@@ -4,6 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["codex"]
+# Compiles the Codex app-server client. Disable to ship a backend-neutral
+# bridge (e.g. for the codecompanion-shadow-review extension where edits arrive
+# from external tools rather than from a Codex turn). See issue #44.
+codex = []
+
 [dependencies]
 anyhow.workspace = true
 codex-workbench-protocol = { path = "../protocol" }

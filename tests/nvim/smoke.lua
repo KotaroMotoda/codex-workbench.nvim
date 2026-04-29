@@ -29,6 +29,9 @@ do
     "state_unavailable",
     "workspace_locked",
     "shadow_unavailable",
+    -- Issue #44 / P0
+    "codex_backend_disabled",
+    "no_active_stage",
   }
   for _, code in ipairs(expected) do
     assert(type(error_codes.messages[code]) == "string", "error_codes.messages missing entry for " .. code)

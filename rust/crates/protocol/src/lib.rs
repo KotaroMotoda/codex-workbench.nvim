@@ -160,6 +160,30 @@ fn default_scope() -> String {
     "all".to_string()
 }
 
+/// Parameters for `stage_begin` (issue #44 / P0).
+///
+/// `stage_begin` snapshots the real workspace into the shadow worktree and
+/// captures a base tree. The caller (e.g. the codecompanion-shadow-review
+/// extension) then writes file edits directly into the returned shadow path,
+/// and finally calls `stage_finalize` to materialize the diff as a review.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct StageBeginParams {
+    /// Optional human-readable label that will be embedded in the synthetic
+    /// turn id, useful when correlating reviews with extension contexts.
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+/// Parameters for `stage_finalize` (issue #44 / P0).
+///
+/// If `stage_id` is provided, it is checked against the active stage to detect
+/// out-of-order calls. When omitted, any active stage is finalized.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct StageFinalizeParams {
+    #[serde(default)]
+    pub stage_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApprovalResponseParams {
     pub approval_id: String,

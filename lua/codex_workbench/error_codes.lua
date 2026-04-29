@@ -34,6 +34,9 @@ M.messages = {
   state_unavailable = "Workspace state file is unavailable or corrupt. See the log for details.",
   workspace_locked = "Another Neovim instance is already using this workspace.",
   shadow_unavailable = "Shadow worktree is unavailable. See the log for details.",
+  -- Issue #44 / P0: backend-neutral bridge
+  codex_backend_disabled = "Codex backend is disabled in this build of the bridge.",
+  no_active_stage = "There is no active external stage. Call stage_begin first.",
 }
 
 M.actions = {

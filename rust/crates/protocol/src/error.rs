@@ -80,6 +80,15 @@ pub enum BridgeError {
 
     #[error("shadow worktree is unavailable")]
     ShadowUnavailable { reason: String },
+
+    // ── P0 (issue #44): backend-neutral bridge ────────────────────────────────
+    #[error("Codex backend is disabled in this build")]
+    CodexBackendDisabled,
+
+    /// `stage_finalize` was called without a preceding `stage_begin`, or the
+    /// stage_id did not match the active stage.
+    #[error("no active external stage")]
+    NoActiveStage,
 }
 
 impl BridgeError {
@@ -107,6 +116,8 @@ impl BridgeError {
             Self::StateUnavailable { .. } => "state_unavailable",
             Self::WorkspaceLocked { .. } => "workspace_locked",
             Self::ShadowUnavailable { .. } => "shadow_unavailable",
+            Self::CodexBackendDisabled => "codex_backend_disabled",
+            Self::NoActiveStage => "no_active_stage",
         }
     }
 
@@ -116,7 +127,9 @@ impl BridgeError {
             Self::NotInitialized
             | Self::NoPendingReview
             | Self::ReviewPending
-            | Self::RealWorkspaceChanged => Value::Null,
+            | Self::RealWorkspaceChanged
+            | Self::CodexBackendDisabled
+            | Self::NoActiveStage => Value::Null,
             Self::InvalidRequest { message } => json!({ "message": message }),
             Self::UnknownMethod { method } => json!({ "method": method }),
             Self::NotAGitRepository { workspace } => json!({ "workspace": workspace }),
@@ -322,6 +335,8 @@ mod tests {
             .code(),
             BridgeError::WorkspaceLocked { holder_pid: None }.code(),
             BridgeError::ShadowUnavailable { reason: "x".into() }.code(),
+            BridgeError::CodexBackendDisabled.code(),
+            BridgeError::NoActiveStage.code(),
         ];
         let mut sorted = codes.to_vec();
         sorted.sort();
