@@ -17,16 +17,20 @@ local function width_for(win)
   return vim.o.columns
 end
 
+local function statusline_escape(text)
+  return tostring(text or ""):gsub("%%", "%%%%")
+end
+
 local function key(lhs)
-  return "%#CodexWinbarKey#[" .. lhs .. "]%*"
+  return "%#CodexWinbarKey#[" .. statusline_escape(lhs) .. "]%*"
 end
 
 local function value(text)
-  return "%#CodexWinbarValue#" .. text .. "%*"
+  return "%#CodexWinbarValue#" .. statusline_escape(text) .. "%*"
 end
 
 local function muted(text)
-  return "%#CodexWinbarMuted#" .. text .. "%*"
+  return "%#CodexWinbarMuted#" .. statusline_escape(text) .. "%*"
 end
 
 local function key_hints()
@@ -114,7 +118,7 @@ function M.render_context(context, win, width)
       index = current or index
       count = total or count
     end
-    local path = context.path or "(none)"
+    local path = statusline_escape(context.path or "(none)")
     local pane = context.pane or "pane"
     local hunk = count > 0 and ("hunk " .. index .. "/" .. count) or "no hunks"
     if width < 80 then
