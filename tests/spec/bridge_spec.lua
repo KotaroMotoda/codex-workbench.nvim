@@ -1,17 +1,24 @@
 -- busted specs for codex_workbench.bridge (synchronous paths only)
 local bridge = require("codex_workbench.bridge")
+local error_prompt = require("codex_workbench.ui.error_prompt")
 
 describe("bridge", function()
   local original_jobstart
   local original_chansend
   local original_jobwait
+  local original_notify
+  local original_error_prompt_show
   local captured_callbacks
+  local error_prompt_calls
 
   before_each(function()
     original_jobstart = vim.fn.jobstart
     original_chansend = vim.fn.chansend
     original_jobwait = vim.fn.jobwait
+    original_notify = vim.notify
+    original_error_prompt_show = error_prompt.show
     captured_callbacks = nil
+    error_prompt_calls = 0
 
     vim.fn.jobstart = function(_, opts)
       captured_callbacks = opts
@@ -20,6 +27,10 @@ describe("bridge", function()
     vim.fn.chansend = function(_, _) end
     vim.fn.jobwait = function(_, _)
       return { -1 }
+    end
+    vim.notify = function() end
+    error_prompt.show = function()
+      error_prompt_calls = error_prompt_calls + 1
     end
 
     -- Reset singleton state before each test.
@@ -35,17 +46,21 @@ describe("bridge", function()
     bridge.state.thread_id = nil
     bridge.state.pending_review = nil
     bridge.state.shadow_path = nil
+    error_prompt.configure({ interactive = false, show_log_path = false })
   end)
 
   after_each(function()
     vim.fn.jobstart = original_jobstart
     vim.fn.chansend = original_chansend
     vim.fn.jobwait = original_jobwait
+    vim.notify = original_notify
+    error_prompt.show = original_error_prompt_show
     bridge.job_id = nil
     bridge.callbacks = {}
     bridge.next_id = 1
     bridge.state.initialized = false
     bridge.state.phase = "idle"
+    error_prompt.configure({ interactive = true, show_log_path = true })
   end)
 
   describe("start", function()
@@ -61,6 +76,15 @@ describe("bridge", function()
       end
       local ok = bridge.start({ binary = { path = "fake-bridge" } })
       assert.is_false(ok)
+    end)
+
+    it("does not show an error prompt from start when jobstart fails", function()
+      vim.fn.jobstart = function(_, _)
+        return 0
+      end
+      bridge.start({ binary = { path = "fake-bridge" } })
+
+      assert.equals(0, error_prompt_calls)
     end)
 
     it("returns true immediately when job is already running", function()

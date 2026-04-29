@@ -3,7 +3,6 @@ local review = require("codex_workbench.ui.review")
 local approval = require("codex_workbench.ui.approval")
 local progress = require("codex_workbench.ui.progress")
 local log = require("codex_workbench.log")
-local error_codes = require("codex_workbench.error_codes")
 
 local M = {
   job_id = nil,
@@ -11,6 +10,7 @@ local M = {
   callbacks = {},
   init_callbacks = {},
   initializing = false,
+  last_start_error = nil,
   stdout_pending = "",
   stderr_pending = "",
   state = {
@@ -71,9 +71,7 @@ end
 --- shows the localized one-liner so we never leak large stderr blobs.
 local function notify_error(payload)
   log.write("ERROR", "bridge_error", payload)
-  local message = error_codes.format(payload)
   vim.schedule(function()
-    vim.notify(message .. "\nLog: " .. log.path(), vim.log.levels.ERROR, { title = "codex-workbench" })
     require("codex_workbench.ui.error_prompt").show(payload)
   end)
 end
@@ -230,9 +228,14 @@ function M.start(opts)
       bin = vim.trim(result.stdout or "")
     else
       log.write("ERROR", "binary_install_failed", result.stderr or "")
-      notify_error({ code = "internal_error" })
+      M.last_start_error = { ok = false, error_code = "bridge_spawn_failed", error = result.stderr }
       return false
     end
+  end
+
+  if vim.fn.executable(bin) == 0 and not (opts.binary and opts.binary.path) then
+    M.last_start_error = { ok = false, error_code = "codex_not_found", error = bin }
+    return false
   end
 
   M.job_id = vim.fn.jobstart({ bin }, {
@@ -285,9 +288,11 @@ function M.start(opts)
   if M.job_id <= 0 then
     M.job_id = nil -- 0はLuaでtruthyなのでnilに戻す
     log.write("ERROR", "bridge_start_failed", { binary = bin })
+    M.last_start_error = { ok = false, error_code = "bridge_spawn_failed", error = bin }
     return false
   end
 
+  M.last_start_error = nil
   return true
 end
 
@@ -303,24 +308,28 @@ function M.initialize(opts, callback)
     return
   end
 
+  local has_callback = callback ~= nil
+  callback = callback or function(response)
+    if not response.ok then
+      notify_error(response)
+    end
+  end
+
   progress.configure(opts.ui and opts.ui.progress or nil)
   progress.set("Initializing")
   if not M.start(opts) then
     -- The bridge process never came up, so no event will ever close the
     -- spinner for us. Stop it here before propagating the failure.
     progress.error("Error")
-    if callback then
+    local response = M.last_start_error or { ok = false, error_code = "bridge_spawn_failed" }
+    if has_callback then
       vim.schedule(function()
-        callback({ ok = false, error_code = "app_server_crashed" })
+        callback(response)
       end)
-    end
-    return
-  end
-
-  callback = callback or function(response)
-    if not response.ok then
+    else
       notify_error(response)
     end
+    return
   end
 
   table.insert(M.init_callbacks, callback)
@@ -360,13 +369,15 @@ end
 ---@param callback function|nil
 function M.request(method, params, callback)
   if not M.job_id then
-    notify_error({ code = "not_initialized" })
+    local response = { ok = false, error_code = "not_initialized" }
     -- Schedule an error delivery to the callback so callers never hang waiting
     -- for a response that will never arrive.
     if callback then
       vim.schedule(function()
-        callback({ ok = false, error_code = "not_initialized" })
+        callback(response)
       end)
+    else
+      notify_error(response)
     end
     return
   end

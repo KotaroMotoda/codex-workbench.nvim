@@ -28,6 +28,7 @@ local M = {}
 
 ---@class CodexWorkbenchErrorOpts
 ---@field interactive boolean Prompt follow-up actions for actionable errors (default: true)
+---@field show_log_path boolean Include the log path in error notifications and prompts (default: true)
 
 ---@class CodexWorkbenchContextsEnabled
 ---@field this boolean Replace @this with current file and nearby lines (default: true)
@@ -78,6 +79,7 @@ M.defaults = {
   },
   errors = {
     interactive = true,
+    show_log_path = true,
   },
   session = {
     auto_resume = true,
@@ -105,7 +107,8 @@ M.defaults = {
 ---@param opts CodexWorkbenchOpts|nil
 ---@return CodexWorkbenchOpts
 function M.setup(opts)
-  return vim.tbl_deep_extend("force", M.defaults, opts or {})
+  M.current = vim.tbl_deep_extend("force", M.defaults, opts or {})
+  return M.current
 end
 
 return M

@@ -8,6 +8,8 @@ local error_codes = require("codex_workbench.error_codes")
 describe("error_codes.messages", function()
   local all_codes = {
     "not_initialized",
+    "codex_not_found",
+    "bridge_spawn_failed",
     "invalid_request",
     "unknown_method",
     "not_a_git_repository",

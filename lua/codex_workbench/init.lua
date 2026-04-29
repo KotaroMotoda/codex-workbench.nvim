@@ -34,7 +34,6 @@ function M.ask(prompt)
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
   local log = require("codex_workbench.log")
-  local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
 
   local function report(response)
@@ -42,11 +41,6 @@ function M.ask(prompt)
     -- stops before showing the other error notification.
     require("codex_workbench.ui.progress").error("Error")
     log.write("ERROR", "bridge_error", response)
-    vim.notify(
-      error_codes.format(response) .. "\nLog: " .. log.path(),
-      vim.log.levels.ERROR,
-      { title = "codex-workbench" }
-    )
     error_prompt.show(response)
   end
 
@@ -61,7 +55,9 @@ function M.ask(prompt)
       report(init_response)
       return
     end
-    bridge.request("ask", { prompt = context.resolve(prompt or "", M.opts) }, function(response)
+    local payload = { prompt = context.resolve(prompt or "", M.opts) }
+    require("codex_workbench.commands").set_last_ask(payload)
+    bridge.request("ask", payload, function(response)
       if not response.ok then
         report(response)
       end
