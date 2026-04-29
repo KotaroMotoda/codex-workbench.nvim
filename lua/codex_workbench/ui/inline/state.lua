@@ -41,7 +41,7 @@ function M.current_hunk(buf)
   for idx, hunk in ipairs(entry.hunks) do
     local start_line = hunk.old_start or hunk.new_start or 1
     local count = math.max(hunk.old_count or 1, hunk.new_count or 1, 1)
-    if cursor >= start_line and cursor <= start_line + count then
+    if cursor >= start_line and cursor <= start_line + count - 1 then
       return hunk, idx
     end
     if not selected or start_line <= cursor then

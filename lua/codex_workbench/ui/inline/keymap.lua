@@ -4,6 +4,7 @@ local M = {
     jump = { next = "]c", prev = "[c" },
   },
   attached = {},
+  listeners = {},
 }
 
 ---@param opts table|nil
@@ -19,12 +20,41 @@ end
 function M.detach(buf)
   local maps = M.attached[buf]
   if not maps then
+    M.listeners[buf] = nil
     return
   end
+  M.listeners[buf] = nil
   for _, lhs in ipairs(maps) do
     del(buf, lhs)
   end
   M.attached[buf] = nil
+end
+
+local function attach_change_listener(buf, inline)
+  local token = {}
+  M.listeners[buf] = token
+  local ok = pcall(vim.api.nvim_buf_attach, buf, false, {
+    on_lines = function(_, changed_buf)
+      if M.listeners[changed_buf] ~= token then
+        return true
+      end
+      vim.schedule(function()
+        if M.listeners[changed_buf] == token and inline.on_buffer_changed then
+          inline.on_buffer_changed(changed_buf)
+        end
+      end)
+      return true
+    end,
+    on_detach = function(_, detached_buf)
+      if M.listeners[detached_buf] == token then
+        M.listeners[detached_buf] = nil
+        M.attached[detached_buf] = nil
+      end
+    end,
+  })
+  if not ok then
+    M.listeners[buf] = nil
+  end
 end
 
 ---@param buf integer
@@ -38,7 +68,7 @@ function M.attach(buf, inline)
     prefix .. "r",
     prefix .. "A",
     prefix .. "R",
-    prefix .. "p",
+    prefix .. "P",
     prefix .. "d",
     jump.next or "]c",
     jump.prev or "[c",
@@ -60,7 +90,7 @@ function M.attach(buf, inline)
   map(prefix .. "R", function()
     inline.reject_file(buf)
   end, "Codex inline reject file")
-  map(prefix .. "p", function()
+  map(prefix .. "P", function()
     inline.preview_current(buf)
   end, "Codex inline preview hunk")
   map(prefix .. "d", function()
@@ -74,6 +104,7 @@ function M.attach(buf, inline)
   end, "Previous Codex hunk")
 
   M.attached[buf] = maps
+  attach_change_listener(buf, inline)
 end
 
 function M.reset()
@@ -81,6 +112,7 @@ function M.reset()
     M.detach(buf)
   end
   M.attached = {}
+  M.listeners = {}
 end
 
 return M

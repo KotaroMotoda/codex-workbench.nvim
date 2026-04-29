@@ -42,14 +42,28 @@ local function usable_buf(buf)
   return true
 end
 
+local function is_absolute(path)
+  if path:sub(1, 1) == "/" or path:sub(1, 1) == "~" then
+    return true
+  end
+  if vim.fn.exists("*isabsolutepath") == 1 then
+    return vim.fn.isabsolutepath(path) == 1
+  end
+  return false
+end
+
 local function resolve_path(path)
   if not path or path == "" then
     return nil
   end
-  if vim.fn.fnamemodify(path, ":p") == path then
-    return path
+  if is_absolute(path) then
+    return vim.fn.fnamemodify(path, ":p")
   end
   return vim.fn.fnamemodify(vim.uv.cwd() .. "/" .. path, ":p")
+end
+
+local function can_show_file(file)
+  return file and not file.binary and file.status ~= "D" and file.hunks and #file.hunks > 0
 end
 
 ---@param item table|nil
@@ -66,7 +80,7 @@ function M.should_inline(item)
     return false
   end
   for _, file in ipairs(files) do
-    if file.binary or file.status == "D" then
+    if not can_show_file(file) then
       return false
     end
     local path = resolve_path(file.path)
@@ -86,35 +100,36 @@ local function notify_fallback()
   vim.notify("Inline diff skipped; opening review buffer", vim.log.levels.INFO, { title = "codex-workbench" })
 end
 
+local function fallback(item, opts)
+  if opts.fallback ~= false then
+    notify_fallback()
+    review().open(item)
+  end
+  return false
+end
+
 ---@param item table|nil
 ---@param opts table|nil
 function M.show(item, opts)
   opts = opts or {}
+  M.clear()
   M.current = item
   local files = files_from_item(item)
   if #files == 0 then
-    if opts.fallback ~= false then
-      review().open(item)
-    end
-    return false
+    return fallback(item, opts)
   end
   for _, file in ipairs(files) do
+    if not can_show_file(file) then
+      return fallback(item, opts)
+    end
     local path = resolve_path(file.path)
     if not path or vim.fn.filereadable(path) ~= 1 then
-      if opts.fallback ~= false then
-        notify_fallback()
-        review().open(item)
-      end
-      return false
+      return fallback(item, opts)
     end
     local buf = vim.fn.bufadd(path)
     vim.fn.bufload(buf)
     if not usable_buf(buf) then
-      if opts.fallback ~= false then
-        notify_fallback()
-        review().open(item)
-      end
-      return false
+      return fallback(item, opts)
     end
     state.set(buf, { path = file.path, hunks = file.hunks })
     render.apply(buf, file.hunks)
@@ -125,6 +140,7 @@ end
 
 ---@param item table|nil
 function M.handle_review(item)
+  M.clear()
   M.current = item
   if M.should_inline(item) then
     M.show(item, { fallback = false })
@@ -154,6 +170,13 @@ end
 
 local function request_action(method, scope, callback)
   require("codex_workbench.ui.progress").set(method == "accept" and "Applying inline hunk" or "Rejecting inline hunk")
+  if method == "reject" then
+    vim.notify(
+      "Rejected inline changes require a new ask to restore",
+      vim.log.levels.INFO,
+      { title = "codex-workbench" }
+    )
+  end
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if report_response(response) and callback then
       callback()
@@ -167,14 +190,21 @@ local function ensure_unchanged(buf)
     return false
   end
   if vim.b[buf].changedtick ~= entry.changedtick or vim.bo[buf].modified then
-    render.clear(buf)
-    state.clear(buf)
-    keymap.detach(buf)
+    M.clear(buf)
     vim.notify("Buffer changed after review; opening review buffer", vim.log.levels.WARN, { title = "codex-workbench" })
     review().open(M.current)
     return false
   end
   return true
+end
+
+function M.on_buffer_changed(buf)
+  if state.get(buf) then
+    M.clear(buf)
+    vim.notify("Buffer changed after review; inline diff cleared", vim.log.levels.WARN, { title = "codex-workbench" })
+  else
+    keymap.detach(buf)
+  end
 end
 
 function M.accept_current(buf)
@@ -201,6 +231,9 @@ end
 
 function M.reject_current(buf)
   buf = buf or vim.api.nvim_get_current_buf()
+  if not ensure_unchanged(buf) then
+    return
+  end
   local entry = state.get(buf)
   local hunk, idx = state.current_hunk(buf)
   if not (entry and hunk) then
@@ -236,6 +269,9 @@ end
 
 function M.reject_file(buf)
   buf = buf or vim.api.nvim_get_current_buf()
+  if not ensure_unchanged(buf) then
+    return
+  end
   local entry = state.get(buf)
   if not entry then
     return
@@ -311,14 +347,15 @@ end
 
 function M.clear(buf)
   if buf then
-    render.clear(buf)
+    if vim.api.nvim_buf_is_valid(buf) then
+      render.clear(buf)
+    end
     state.clear(buf)
     keymap.detach(buf)
     return
   end
   for candidate in pairs(state.by_buf) do
-    render.clear(candidate)
-    keymap.detach(candidate)
+    M.clear(candidate)
   end
   state.reset()
 end

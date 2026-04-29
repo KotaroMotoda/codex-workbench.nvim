@@ -6,7 +6,6 @@ local MAX_VISIBLE_ADD_LINES = 100
 
 local function setup_highlights()
   vim.api.nvim_set_hl(0, "CodexInlineAddSign", { default = true, link = "DiffAdd" })
-  vim.api.nvim_set_hl(0, "CodexInlineDeleteSign", { default = true, link = "DiffDelete" })
   vim.api.nvim_set_hl(0, "CodexInlineAdd", { default = true, link = "DiffAdd" })
   vim.api.nvim_set_hl(0, "CodexInlineDelete", { default = true, link = "DiffDelete" })
   vim.api.nvim_set_hl(0, "CodexInlineMuted", { default = true, link = "Comment" })

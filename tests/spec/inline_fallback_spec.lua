@@ -1,5 +1,6 @@
 local inline = require("codex_workbench.ui.inline")
 local review = require("codex_workbench.ui.review")
+local state = require("codex_workbench.ui.inline.state")
 
 local function patch_for(paths)
   local lines = {}
@@ -15,6 +16,28 @@ local function patch_for(paths)
     })
   end
   return table.concat(lines, "\n")
+end
+
+local function file_item(path)
+  return {
+    files = {
+      {
+        path = path,
+        hunks = {
+          {
+            old_start = 1,
+            old_count = 1,
+            new_start = 1,
+            new_count = 1,
+            lines = {
+              { kind = "delete", text = "old", raw = "-old" },
+              { kind = "add", text = "new", raw = "+new" },
+            },
+          },
+        },
+      },
+    },
+  }
 end
 
 describe("inline fallback", function()
@@ -64,5 +87,45 @@ describe("inline fallback", function()
     vim.api.nvim_buf_set_lines(0, 0, 1, false, { "dirty" })
     inline.handle_review({ patch = patch_for({ "dirty.lua" }) })
     assert.is_true(opened)
+  end)
+
+  it("normalizes absolute paths before opening target buffers", function()
+    vim.fn.writefile({ "old" }, "absolute.lua")
+    vim.fn.mkdir(dir .. "/sub", "p")
+    local item = file_item(dir .. "/sub/../absolute.lua")
+    assert.is_true(inline.show(item, { fallback = false }))
+  end)
+
+  it("falls back for direct show of deleted files", function()
+    vim.fn.writefile({ "old" }, "deleted.lua")
+    local item = file_item("deleted.lua")
+    item.files[1].status = "D"
+
+    assert.is_false(inline.show(item))
+    assert.is_true(opened)
+  end)
+
+  it("clears stale inline buffers before handling a new review", function()
+    vim.fn.writefile({ "old" }, "first.lua")
+    vim.fn.writefile({ "old" }, "second.lua")
+
+    inline.handle_review({ patch = patch_for({ "first.lua" }) })
+    local first_buf = vim.fn.bufadd(dir .. "/first.lua")
+    assert.is_not_nil(state.get(first_buf))
+
+    inline.handle_review({ patch = patch_for({ "second.lua" }) })
+    local second_buf = vim.fn.bufadd(dir .. "/second.lua")
+    assert.is_nil(state.get(first_buf))
+    assert.is_not_nil(state.get(second_buf))
+  end)
+
+  it("clears invalid buffers without raising", function()
+    vim.fn.writefile({ "old" }, "gone.lua")
+    assert.is_true(inline.show(file_item("gone.lua"), { fallback = false }))
+    local buf = vim.fn.bufadd(dir .. "/gone.lua")
+    vim.api.nvim_buf_delete(buf, { force = true })
+
+    local ok = pcall(inline.clear)
+    assert.is_true(ok)
   end)
 end)

@@ -1,6 +1,8 @@
 local inline = require("codex_workbench.ui.inline")
 local bridge = require("codex_workbench.bridge")
 local render = require("codex_workbench.ui.inline.render")
+local review = require("codex_workbench.ui.review")
+local state = require("codex_workbench.ui.inline.state")
 
 local function item_for(path)
   return {
@@ -19,12 +21,16 @@ end
 
 describe("inline keymap", function()
   local original_request
+  local original_review_open
   local tmp
   local captured
+  local opened_review
 
   before_each(function()
     original_request = bridge.request
+    original_review_open = review.open
     captured = nil
+    opened_review = false
     tmp = vim.fn.tempname()
     vim.fn.writefile({ "old", "keep" }, tmp)
     inline.configure({ enabled = true, auto_show = true, prefix = "<leader>c", fallback_threshold = 3 })
@@ -34,10 +40,14 @@ describe("inline keymap", function()
         cb({ ok = true, result = {} })
       end
     end
+    review.open = function()
+      opened_review = true
+    end
   end)
 
   after_each(function()
     bridge.request = original_request
+    review.open = original_review_open
     inline._reset_for_tests()
     if tmp then
       pcall(vim.fn.delete, tmp)
@@ -63,5 +73,43 @@ describe("inline keymap", function()
 
     local marks = vim.api.nvim_buf_get_extmarks(buf, render.namespace, 0, -1, { details = true })
     assert.equals(0, #marks)
+  end)
+
+  it("clears inline state when the buffer changes after display", function()
+    vim.cmd("edit " .. vim.fn.fnameescape(tmp))
+    local buf = vim.api.nvim_get_current_buf()
+    assert.is_true(inline.show(item_for(tmp), { fallback = false }))
+    assert.is_not_nil(state.get(buf))
+
+    vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "edited" })
+
+    local cleared = vim.wait(200, function()
+      return state.get(buf) == nil
+    end)
+    assert.is_true(cleared)
+  end)
+
+  it("falls back instead of rejecting a modified buffer", function()
+    vim.cmd("edit " .. vim.fn.fnameescape(tmp))
+    local buf = vim.api.nvim_get_current_buf()
+    assert.is_true(inline.show(item_for(tmp), { fallback = false }))
+    vim.bo[buf].modified = true
+
+    inline.reject_current(buf)
+
+    assert.is_nil(captured)
+    assert.is_true(opened_review)
+  end)
+
+  it("falls back instead of rejecting a modified file", function()
+    vim.cmd("edit " .. vim.fn.fnameescape(tmp))
+    local buf = vim.api.nvim_get_current_buf()
+    assert.is_true(inline.show(item_for(tmp), { fallback = false }))
+    vim.bo[buf].modified = true
+
+    inline.reject_file(buf)
+
+    assert.is_nil(captured)
+    assert.is_true(opened_review)
   end)
 end)
