@@ -17,6 +17,7 @@ local function make_opts()
     ui = {
       output = { position = "right", size = 40 },
       review = { layout = "vertical" },
+      inline = { enabled = true, auto_show = true },
       progress = { enabled = false },
       chat = { enabled = true, cmp_source = false },
     },
@@ -112,6 +113,7 @@ describe("commands", function()
       "CodexWorkbenchChat",
       "CodexWorkbenchAsk",
       "CodexWorkbenchReview",
+      "CodexWorkbenchInline",
       "CodexWorkbenchThreads",
       "CodexWorkbenchAccept",
       "CodexWorkbenchReject",
