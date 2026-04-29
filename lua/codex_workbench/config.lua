@@ -13,6 +13,8 @@ local M = {}
 ---@field layout "vertical"|"horizontal" Split direction for the review window (default: "vertical")
 ---@field mode "split"|"diffview" Review UI mode (default: "split")
 ---@field tree_width integer Width of the file tree pane in diffview mode (default: 30)
+---@field pane_split integer Before/after pane ratio in diffview mode (default: 50)
+---@field ascii_only boolean Use ASCII-only review symbols (default: false)
 ---@field winbar boolean Show key hints in review winbars (default: true)
 
 ---@class CodexWorkbenchProgressOpts
@@ -56,6 +58,8 @@ M.defaults = {
       layout = "vertical",
       mode = "split",
       tree_width = 30,
+      pane_split = 50,
+      ascii_only = false,
       winbar = true,
     },
     progress = {
