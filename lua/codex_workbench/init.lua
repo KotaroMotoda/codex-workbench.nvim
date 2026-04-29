@@ -28,6 +28,11 @@ function M.setup(opts)
     end
   end
   require("codex_workbench.commands").register(M.opts)
+  if M.opts.ui.palette and M.opts.ui.palette.enabled ~= false and M.opts.ui.palette.keymap then
+    vim.keymap.set("n", M.opts.ui.palette.keymap, function()
+      require("codex_workbench.ui.palette").open(M.opts)
+    end, { desc = "Codex palette" })
+  end
   if M.opts.session.auto_resume then
     require("codex_workbench.bridge").initialize(M.opts)
   end
@@ -35,7 +40,9 @@ function M.setup(opts)
 end
 
 ---@param prompt string|nil
-function M.ask(prompt)
+---@param ask_opts table|nil
+function M.ask(prompt, ask_opts)
+  ask_opts = ask_opts or {}
   M.opts = M.opts or require("codex_workbench.config").setup({})
   local bridge = require("codex_workbench.bridge")
   local context = require("codex_workbench.context")
@@ -62,7 +69,14 @@ function M.ask(prompt)
       report(init_response)
       return
     end
-    local payload = { prompt = context.resolve(prompt or "", M.opts) }
+    local resolved = prompt or ""
+    if ask_opts.resolve_context ~= false then
+      resolved = context.resolve(resolved, M.opts)
+    end
+    local payload = {
+      prompt = resolved,
+      persist_history = require("codex_workbench.ui.palette.history").enabled(M.opts),
+    }
     require("codex_workbench.commands").set_last_ask(payload)
     bridge.request("ask", payload, function(response)
       if not response.ok then

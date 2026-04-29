@@ -124,6 +124,15 @@ require("codex_workbench").setup({
       enter_submits = true,
       cmp_source = true,    -- registers the optional nvim-cmp source
     },
+    palette = {
+      enabled = true,
+      keymap = "<leader>cp",
+      templates = {},       -- user triggers override built-in triggers
+      history = {
+        enabled = true,     -- false also disables prompt persistence
+        limit = 50,         -- shown and retained prompt count
+      },
+    },
   },
 
   -- Session
@@ -158,6 +167,10 @@ When `nvim-cmp` is installed, setup registers a `codex_workbench` source for
 context markers such as `@this`, `@buffer`, `@selection`, `@diagnostics`,
 `@changes`, and `@file(`. Add `{ name = "codex_workbench" }` to your cmp
 sources to use it in prompt buffers.
+
+The palette uses Telescope, `snacks.picker.pick`, or fzf-lua when available and
+falls back to `vim.ui.select`. If a picker API is missing or incompatible, the
+fallback is used instead.
 
 ## Limitations
 

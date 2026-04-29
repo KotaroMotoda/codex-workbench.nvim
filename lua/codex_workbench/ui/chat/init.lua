@@ -147,6 +147,7 @@ function M.submit(text)
     prompt = resolved,
     thread_id = M.current_thread_id or bridge.state.thread_id,
     new_thread = not (M.current_thread_id or bridge.state.thread_id),
+    persist_history = require("codex_workbench.ui.palette.history").enabled(opts),
   }, function(response)
     if not report_error(response) then
       M.current_thread_id = bridge.state.thread_id or M.current_thread_id

@@ -364,6 +364,7 @@ function M.initialize(opts, callback)
     codex_cmd = opts.codex_cmd,
     max_untracked_file_bytes = opts.shadow.max_untracked_file_bytes,
     max_untracked_total_bytes = opts.shadow.max_untracked_total_bytes,
+    max_recent_prompts = require("codex_workbench.ui.palette.history").limit(opts),
   }, function(response)
     M.initializing = false
     if response.ok then

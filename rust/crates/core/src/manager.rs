@@ -6,8 +6,8 @@ use std::sync::mpsc::Receiver;
 
 use anyhow::{anyhow, Result};
 use codex_workbench_protocol::{
-    AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, ScopeParams,
-    ThreadIdParams, ThreadMessagesParams,
+    AskParams, BridgeError, BridgeEvent, BridgeRequest, InitializeParams, RecentPromptsParams,
+    ScopeParams, ThreadIdParams, ThreadMessagesParams,
 };
 use fs2::FileExt as _;
 use serde_json::{json, Value};
@@ -34,6 +34,7 @@ struct RuntimeConfig {
     codex_cmd: String,
     max_untracked_file_bytes: u64,
     max_untracked_total_bytes: u64,
+    max_recent_prompts: usize,
 }
 
 pub struct Manager {
@@ -94,6 +95,10 @@ impl Manager {
                 self.ask(params, bridge_rx, sink)
             }
             "review" => self.review(),
+            "recent_prompts" => {
+                let params: RecentPromptsParams = serde_json::from_value(request.params)?;
+                self.recent_prompts(params)
+            }
             "threads" => self.threads(),
             "thread/messages" => {
                 let params: ThreadMessagesParams = serde_json::from_value(request.params)?;
@@ -162,6 +167,7 @@ impl Manager {
             codex_cmd: params.codex_cmd,
             max_untracked_file_bytes: params.max_untracked_file_bytes,
             max_untracked_total_bytes: params.max_untracked_total_bytes,
+            max_recent_prompts: params.max_recent_prompts,
         });
         self.real = Some(real);
         self.shadow = Some(shadow);
@@ -189,6 +195,11 @@ impl Manager {
     ) -> Result<Value> {
         self.ensure_no_pending_review()?;
         let config = self.config()?.clone();
+        if params.persist_history {
+            self.state
+                .push_recent_prompt_with_limit(params.prompt.clone(), config.max_recent_prompts);
+            self.save_state()?;
+        }
         let real = self.real()?.clone();
         let shadow = self.shadow()?.clone();
 
@@ -276,6 +287,13 @@ impl Manager {
         Ok(json!({
             "pending": self.state.pending_review(),
             "reviews": &self.state.reviews,
+        }))
+    }
+
+    fn recent_prompts(&self, params: RecentPromptsParams) -> Result<Value> {
+        self.config()?;
+        Ok(json!({
+            "prompts": self.state.recent_prompts(params.limit as usize),
         }))
     }
 

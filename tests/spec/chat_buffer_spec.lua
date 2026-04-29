@@ -71,6 +71,7 @@ describe("chat buffer", function()
     assert.equals("resolved:hello @this", captured.prompt)
     assert.equals("thread-1", captured.thread_id)
     assert.is_false(captured.new_thread)
+    assert.is_true(captured.persist_history)
   end)
 
   it("appends streaming chunks to the messages buffer", function()

@@ -369,6 +369,22 @@ fn ask_with_mock_saves_thread_id_to_state() {
 }
 
 #[test]
+fn ask_can_skip_recent_prompt_persistence() {
+    let mut env = TestEnv::setup();
+    env.manager
+        .inject_app_server(Box::new(MockAppServer::new()));
+
+    env.call(
+        "ask",
+        json!({ "prompt": "secret @buffer", "new_thread": true, "persist_history": false }),
+    )
+    .unwrap();
+
+    let result = env.call("recent_prompts", json!({ "limit": 10 })).unwrap();
+    assert_eq!(result["prompts"], json!([]));
+}
+
+#[test]
 fn ask_with_mock_creates_review_when_shadow_changes() {
     let mut env = TestEnv::setup();
     let mock = MockAppServer::new().with_shadow_file("codex_output.txt", "hello from codex\n");

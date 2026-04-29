@@ -109,6 +109,7 @@ function M.register(opts)
         prompt = context.resolve(prompt, opts, snap),
         thread_id = thread.new_thread and nil or thread.thread_id,
         new_thread = thread.new_thread == true,
+        persist_history = require("codex_workbench.ui.palette.history").enabled(opts),
       })
       bridge.request("ask", last_ask, report_error)
     end
@@ -197,6 +198,10 @@ function M.register(opts)
         end)
       end)
     end)
+  end, {})
+
+  vim.api.nvim_create_user_command("CodexWorkbenchPalette", function()
+    require("codex_workbench.ui.palette").open(opts)
   end, {})
 
   vim.api.nvim_create_user_command("CodexWorkbenchAccept", function(command)
