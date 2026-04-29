@@ -111,14 +111,14 @@ local function handle_event(message)
     M.state.phase = "review"
     M.state.pending_review = message.item
     review.open(message.item)
-    progress.done("Review ready")
+    progress.set("Reviewing", { static = true })
   elseif message.event == "review_state" then
     local pending = message.pending
     M.state.phase = pending and "review" or "ready"
     M.state.pending_review = pending
     review.render(pending)
     if pending then
-      progress.done("Review ready")
+      progress.set("Reviewing", { static = true })
     else
       progress.done("Applied")
     end
@@ -141,9 +141,9 @@ local function handle_event(message)
     M.state.phase = "ready"
     log.write("ERROR", "turn_error", message)
     output.show_error(message.message or "Codex turn failed")
-    progress.done("Error")
+    progress.error("Error")
   elseif message.event == "error" then
-    progress.done("Error")
+    progress.error("Error")
     notify_error(message)
   end
 end
@@ -316,7 +316,7 @@ function M.initialize(opts, callback)
   if not M.start(opts) then
     -- The bridge process never came up, so no event will ever close the
     -- spinner for us. Stop it here before propagating the failure.
-    progress.done("Error", 0)
+    progress.error("Error")
     if callback then
       vim.schedule(function()
         callback(M.last_start_error or { ok = false, error_code = "bridge_spawn_failed" })
