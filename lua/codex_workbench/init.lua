@@ -4,7 +4,12 @@ local M = {}
 ---@return table
 function M.setup(opts)
   M.opts = require("codex_workbench.config").setup(opts)
-  require("codex_workbench.ui.review.highlights").setup()
+  local highlights = require("codex_workbench.ui.highlights")
+  highlights.setup()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("CodexWorkbenchHighlights", { clear = true }),
+    callback = highlights.setup,
+  })
   require("codex_workbench.ui.progress").configure(M.opts.ui.progress)
   vim.api.nvim_create_autocmd("VimResized", {
     group = vim.api.nvim_create_augroup("CodexWorkbenchProgress", { clear = true }),

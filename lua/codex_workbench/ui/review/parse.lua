@@ -45,15 +45,31 @@ end
 local function classify_line(line)
   local prefix = line:sub(1, 1)
   if prefix == "+" then
-    return "add", line:sub(2)
+    return "add", "+", line:sub(2)
   end
   if prefix == "-" then
-    return "delete", line:sub(2)
+    return "delete", "-", line:sub(2)
   end
   if prefix == " " then
-    return "context", line:sub(2)
+    return "context", " ", line:sub(2)
   end
-  return "meta", line
+  return "meta", "", line
+end
+
+local function status_to_kind(file)
+  if file.binary then
+    return "binary"
+  end
+  if file.status == "A" then
+    return "add"
+  end
+  if file.status == "D" then
+    return "delete"
+  end
+  if file.status == "R" then
+    return "rename"
+  end
+  return "modify"
 end
 
 ---@param patch string|nil
@@ -71,6 +87,7 @@ function M.parse(patch)
     if current.status == "D" then
       current.path = current.old_path or current.path
     end
+    current.kind = status_to_kind(current)
     table.insert(result.files, current)
   end
 
@@ -117,11 +134,14 @@ function M.parse(patch)
         local parsed_hunk = hunk_header(line)
         if parsed_hunk then
           hunk = parsed_hunk
+          hunk.index = #current.hunks
+          hunk.state = "pending"
           table.insert(current.hunks, hunk)
         elseif hunk then
-          local kind, text = classify_line(line)
+          local kind, prefix, text = classify_line(line)
           table.insert(hunk.lines, {
             kind = kind,
+            prefix = prefix,
             text = text,
             raw = line,
           })
