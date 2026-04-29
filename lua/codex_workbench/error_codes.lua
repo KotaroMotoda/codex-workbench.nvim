@@ -43,19 +43,19 @@ M.actions = {
     { key = "c", label = "閉じる", default = true },
   },
   bridge_spawn_failed = {
-    { key = "r", label = "再試行", fn = "retry_last" },
+    { key = "r", label = "bridge を再起動", fn = "restart_bridge" },
     { key = "i", label = "bridge をインストール", cmd = "CodexWorkbenchInstallBinary" },
     { key = "l", label = "ログを開く", fn = "open_log" },
     { key = "c", label = "閉じる", default = true },
   },
   app_server_crashed = {
-    { key = "r", label = "再試行", fn = "retry_last" },
+    { key = "r", label = "bridge を再起動", fn = "restart_bridge" },
     { key = "i", label = "bridge をインストール", cmd = "CodexWorkbenchInstallBinary" },
     { key = "l", label = "ログを開く", fn = "open_log" },
     { key = "c", label = "閉じる", default = true },
   },
   app_server_error = {
-    { key = "r", label = "再試行", fn = "retry_last" },
+    { key = "r", label = "bridge を再起動", fn = "restart_bridge" },
     { key = "l", label = "ログを開く", fn = "open_log" },
     { key = "c", label = "閉じる", default = true },
   },

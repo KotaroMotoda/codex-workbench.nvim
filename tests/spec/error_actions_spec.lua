@@ -26,4 +26,11 @@ describe("error actions", function()
     assert.is_true(keys.d)
     assert.is_true(keys.l)
   end)
+
+  it("uses restart actions for bridge and app-server startup failures", function()
+    for _, code in ipairs({ "bridge_spawn_failed", "app_server_crashed", "app_server_error" }) do
+      local actions = error_codes.actions_for(code)
+      assert.equals("restart_bridge", actions[1].fn)
+    end
+  end)
 end)

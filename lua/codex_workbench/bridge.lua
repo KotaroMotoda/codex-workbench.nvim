@@ -229,14 +229,12 @@ function M.start(opts)
     else
       log.write("ERROR", "binary_install_failed", result.stderr or "")
       M.last_start_error = { ok = false, error_code = "bridge_spawn_failed", error = result.stderr }
-      notify_error(M.last_start_error)
       return false
     end
   end
 
   if vim.fn.executable(bin) == 0 and not (opts.binary and opts.binary.path) then
     M.last_start_error = { ok = false, error_code = "codex_not_found", error = bin }
-    notify_error(M.last_start_error)
     return false
   end
 
@@ -291,7 +289,6 @@ function M.start(opts)
     M.job_id = nil -- 0はLuaでtruthyなのでnilに戻す
     log.write("ERROR", "bridge_start_failed", { binary = bin })
     M.last_start_error = { ok = false, error_code = "bridge_spawn_failed", error = bin }
-    notify_error(M.last_start_error)
     return false
   end
 
@@ -311,24 +308,28 @@ function M.initialize(opts, callback)
     return
   end
 
+  local has_callback = callback ~= nil
+  callback = callback or function(response)
+    if not response.ok then
+      notify_error(response)
+    end
+  end
+
   progress.configure(opts.ui and opts.ui.progress or nil)
   progress.set("Initializing")
   if not M.start(opts) then
     -- The bridge process never came up, so no event will ever close the
     -- spinner for us. Stop it here before propagating the failure.
     progress.error("Error")
-    if callback then
+    local response = M.last_start_error or { ok = false, error_code = "bridge_spawn_failed" }
+    if has_callback then
       vim.schedule(function()
-        callback(M.last_start_error or { ok = false, error_code = "bridge_spawn_failed" })
+        callback(response)
       end)
-    end
-    return
-  end
-
-  callback = callback or function(response)
-    if not response.ok then
+    else
       notify_error(response)
     end
+    return
   end
 
   table.insert(M.init_callbacks, callback)

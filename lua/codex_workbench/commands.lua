@@ -3,6 +3,7 @@ local log = require("codex_workbench.log")
 local error_prompt = require("codex_workbench.ui.error_prompt")
 local progress = require("codex_workbench.ui.progress")
 local last_ask = nil
+local current_opts = nil
 
 function M.set_last_ask(payload)
   last_ask = payload
@@ -29,14 +30,21 @@ function M.retry_last()
   end
   local bridge = require("codex_workbench.bridge")
   local output = require("codex_workbench.ui.output")
-  output.open()
-  output.start_turn()
-  progress.set("Asking")
-  bridge.request("ask", last_ask, report_error)
+  local opts = current_opts or require("codex_workbench.config").current or require("codex_workbench.config").setup({})
+  bridge.initialize(opts, function(response)
+    if report_error(response) then
+      return
+    end
+    output.open()
+    output.start_turn()
+    progress.set("Asking")
+    bridge.request("ask", last_ask, report_error)
+  end)
 end
 
 ---@param opts CodexWorkbenchOpts
 function M.register(opts)
+  current_opts = opts
   local bridge = require("codex_workbench.bridge")
   local context = require("codex_workbench.context")
   local output = require("codex_workbench.ui.output")
