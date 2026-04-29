@@ -3,6 +3,8 @@ local panes = require("codex_workbench.ui.review.panes")
 local review = require("codex_workbench.ui.review")
 local tree = require("codex_workbench.ui.review.tree")
 local highlights = require("codex_workbench.ui.review.highlights")
+local state = require("codex_workbench.ui.review.state")
+local bridge = require("codex_workbench.bridge")
 
 local sample_patch = table.concat({
   "diff --git a/src/a.lua b/src/a.lua",
@@ -35,11 +37,16 @@ local function win_for_buf(buf)
 end
 
 describe("review diffview", function()
+  local original_request
+
   before_each(function()
+    original_request = bridge.request
     highlights.setup()
+    state.reset()
   end)
 
   after_each(function()
+    bridge.request = original_request
     review._reset_for_tests()
     panes.reset()
   end)
@@ -127,6 +134,27 @@ describe("review diffview", function()
     assert.equals(0, hunk)
   end)
 
+  it("renders hunk badges in the tree and honors badge settings", function()
+    local parsed = parse.parse(sample_patch)
+    vim.cmd("vnew")
+    local tree_win = vim.api.nvim_get_current_win()
+
+    tree.configure({ badges = true, ascii_only = true })
+    tree.attach(tree_win)
+    state.accept_file("src/a.lua")
+    tree.render(parsed.files)
+
+    local marks = vim.api.nvim_buf_get_extmarks(tree.buffer(), highlights.namespace, 0, -1, { details = true })
+    assert.equals("[1 hunk · [ok]]", marks[1][4].virt_text[2][1])
+
+    tree.configure({ badges = false })
+    tree.render(parsed.files)
+    marks = vim.api.nvim_buf_get_extmarks(tree.buffer(), highlights.namespace, 0, -1, { details = true })
+    assert.equals(0, #marks)
+
+    close_win(tree_win)
+  end)
+
   it("moves between hunks in diffview panes", function()
     local patch = table.concat({
       "diff --git a/src/a.lua b/src/a.lua",
@@ -181,5 +209,25 @@ describe("review diffview", function()
     local path, hunk = review.current_hunk()
     assert.equals("src/a.lua", path)
     assert.equals(1, hunk)
+  end)
+
+  it("updates local badges only after bridge accept succeeds", function()
+    local pending_callback
+    bridge.request = function(_, _, callback)
+      pending_callback = callback
+    end
+
+    review.configure({ mode = "diffview", tree_width = 24, winbar = false, ascii_only = true, badges = true })
+    review.render({ id = "r1", turn_id = "t1", status = "pending", files = {}, patch = sample_patch })
+
+    vim.api.nvim_set_current_win(tree.window())
+    vim.cmd("normal h")
+    assert.is_not_nil(pending_callback)
+    local marks = vim.api.nvim_buf_get_extmarks(tree.buffer(), highlights.namespace, 0, -1, { details = true })
+    assert.equals("[1 hunk]", marks[1][4].virt_text[2][1])
+
+    pending_callback({ ok = true, result = {} })
+    marks = vim.api.nvim_buf_get_extmarks(tree.buffer(), highlights.namespace, 0, -1, { details = true })
+    assert.equals("[1 hunk · [ok]]", marks[1][4].virt_text[2][1])
   end)
 end)

@@ -118,13 +118,14 @@ function M.render_context(context, win, width)
       index = current or index
       count = total or count
     end
-    local path = statusline_escape(context.path or "(none)")
+    local path = context.path or "(none)"
     local pane = context.pane or "pane"
     local hunk = count > 0 and ("hunk " .. index .. "/" .. count) or "no hunks"
+    local badge = context.badge and (" " .. statusline_escape(context.badge)) or ""
     if width < 80 then
-      return value(hunk)
+      return value(hunk) .. "%#CodexBadge#" .. badge .. "%*"
     end
-    return muted(pane .. ": ") .. path .. "%=" .. value(hunk)
+    return muted(pane .. ": ") .. value(path) .. "%=" .. value(hunk) .. "%#CodexBadge#" .. badge .. "%*"
   end
 
   return key_hints()

@@ -2,6 +2,7 @@ local legacy = require("codex_workbench.ui.review.legacy")
 local parse = require("codex_workbench.ui.review.parse")
 local tree = require("codex_workbench.ui.review.tree")
 local panes = require("codex_workbench.ui.review.panes")
+local state = require("codex_workbench.ui.review.state")
 local winbar = require("codex_workbench.ui.review.winbar")
 
 local M = {
@@ -20,6 +21,7 @@ local M = {
   tree_win = nil,
   before_win = nil,
   after_win = nil,
+  state_item_key = nil,
 }
 
 ---@param opts CodexWorkbenchReviewOpts|{}
@@ -36,7 +38,7 @@ local function sync_legacy_state()
   M.current = legacy.current
 end
 
-local function request_review_action(method, scope)
+local function request_review_action(method, scope, on_success)
   local log = require("codex_workbench.log")
   local error_codes = require("codex_workbench.error_codes")
   local error_prompt = require("codex_workbench.ui.error_prompt")
@@ -45,6 +47,9 @@ local function request_review_action(method, scope)
   require("codex_workbench.bridge").request(method, { scope = scope }, function(response)
     if response.ok then
       vim.cmd("checktime")
+      if on_success then
+        on_success(response)
+      end
     else
       -- Stop the spinner immediately on failure; on success the bridge
       -- emits its own progress.done event.
@@ -57,6 +62,50 @@ local function request_review_action(method, scope)
       )
       error_prompt.show(response)
     end
+  end)
+end
+
+local function redraw_diffview_state()
+  if M.opts.mode == "diffview" and M.parsed then
+    tree.render(M.parsed.files)
+    panes.show(M.parsed.files[tree.selected] or M.parsed.files[1])
+  end
+end
+
+local function record_local_state(method, scope)
+  if scope == "all" then
+    for _, file in ipairs((M.parsed and M.parsed.files) or {}) do
+      if method == "accept" then
+        state.accept_file(file.path)
+      else
+        state.reject_file(file.path)
+      end
+    end
+    return
+  end
+  local file_path = scope:match("^file:(.+)$")
+  if file_path then
+    if method == "accept" then
+      state.accept_file(file_path)
+    else
+      state.reject_file(file_path)
+    end
+    return
+  end
+  local hunk_path, hunk = scope:match("^hunk:(.+):(%d+)$")
+  if hunk_path then
+    if method == "accept" then
+      state.accept_hunk(hunk_path, tonumber(hunk))
+    else
+      state.reject_hunk(hunk_path, tonumber(hunk))
+    end
+  end
+end
+
+local function review_action(method, scope)
+  request_review_action(method, scope, function()
+    record_local_state(method, scope)
+    redraw_diffview_state()
   end)
 end
 
@@ -132,18 +181,18 @@ local function set_common_keymaps(buf)
   end
 
   map("a", function()
-    request_review_action("accept", "all")
+    review_action("accept", "all")
   end)
   map("r", function()
-    request_review_action("reject", "all")
+    review_action("reject", "all")
   end)
   map("A", function()
     local path = current_file()
-    request_review_action("accept", path and ("file:" .. path) or "all")
+    review_action("accept", path and ("file:" .. path) or "all")
   end)
   map("R", function()
     local path = current_file()
-    request_review_action("reject", path and ("file:" .. path) or "all")
+    review_action("reject", path and ("file:" .. path) or "all")
   end)
   map("h", function()
     local path, hunk = current_hunk()
@@ -151,7 +200,7 @@ local function set_common_keymaps(buf)
       vim.notify("No hunk under cursor", vim.log.levels.WARN, { title = "codex-workbench" })
       return
     end
-    request_review_action("accept", "hunk:" .. path .. ":" .. hunk)
+    review_action("accept", "hunk:" .. path .. ":" .. hunk)
   end)
   map("x", function()
     local path, hunk = current_hunk()
@@ -159,7 +208,7 @@ local function set_common_keymaps(buf)
       vim.notify("No hunk under cursor", vim.log.levels.WARN, { title = "codex-workbench" })
       return
     end
-    request_review_action("reject", "hunk:" .. path .. ":" .. hunk)
+    review_action("reject", "hunk:" .. path .. ":" .. hunk)
   end)
   map("q", close_diffview)
   map("]f", function()
@@ -212,6 +261,11 @@ end
 local function render_diffview(item)
   ensure_layout()
   M.current = item
+  local state_item_key = item and (item.id or item.turn_id or item.patch) or nil
+  if state_item_key ~= M.state_item_key then
+    state.reset()
+    M.state_item_key = state_item_key
+  end
   M.parsed = parse.parse(item and item.patch or "")
   tree.render(M.parsed.files)
   set_tree_keymaps()
@@ -251,6 +305,7 @@ function M._reset_for_tests()
   M.buf = nil
   M.win = nil
   M.parsed = nil
+  M.state_item_key = nil
 end
 
 return M

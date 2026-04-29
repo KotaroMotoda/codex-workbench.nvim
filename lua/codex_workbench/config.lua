@@ -16,6 +16,9 @@ local M = {}
 ---@field pane_split integer Before/after pane ratio in diffview mode (default: 50)
 ---@field ascii_only boolean Use ASCII-only review symbols (default: false)
 ---@field winbar boolean Show key hints in review winbars (default: true)
+---@field signs boolean Show extmark signs in review panes (default: true)
+---@field badges boolean Show hunk badges in review tree (default: true)
+---@field ascii_only boolean Use ASCII review symbols in badges (default: false)
 
 ---@class CodexWorkbenchProgressOpts
 ---@field enabled boolean Show progress toast (default: true)
@@ -61,6 +64,8 @@ M.defaults = {
       pane_split = 50,
       ascii_only = false,
       winbar = true,
+      signs = true,
+      badges = true,
     },
     progress = {
       enabled = true,

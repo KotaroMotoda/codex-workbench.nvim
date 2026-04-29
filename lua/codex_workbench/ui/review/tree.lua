@@ -1,5 +1,6 @@
-local highlights = require("codex_workbench.ui.review.highlights")
+local highlights = require("codex_workbench.ui.highlights")
 local panes = require("codex_workbench.ui.review.panes")
+local state = require("codex_workbench.ui.review.state")
 local winbar = require("codex_workbench.ui.review.winbar")
 
 local M = {
@@ -8,7 +9,7 @@ local M = {
   files = {},
   selected = 1,
   selected_hunks = {},
-  opts = { winbar = true },
+  opts = { winbar = true, badges = true, ascii_only = false },
 }
 
 local function create_buffer()
@@ -60,14 +61,6 @@ local function status_label(file)
   return file.status or "M"
 end
 
-local function badge(file)
-  if file.kind == "binary" or file.binary then
-    return "[binary]"
-  end
-  local hunk_count = #(file.hunks or {})
-  return "[" .. hunk_count .. "]"
-end
-
 local function display_path(file)
   if file.kind == "rename" and file.old_path and file.old_path ~= file.path then
     local arrow = M.opts.ascii_only and " -> " or " \226\134\146 "
@@ -77,8 +70,8 @@ local function display_path(file)
 end
 
 local function state_marker(file)
-  local state = file.state
-  if not state and #(file.hunks or {}) > 0 then
+  local marker_state = file.state
+  if not marker_state and #(file.hunks or {}) > 0 then
     local accepted = 0
     local rejected = 0
     for _, hunk in ipairs(file.hunks) do
@@ -89,15 +82,15 @@ local function state_marker(file)
       end
     end
     if accepted == #file.hunks then
-      state = "accepted"
+      marker_state = "accepted"
     elseif rejected == #file.hunks then
-      state = "rejected"
+      marker_state = "rejected"
     end
   end
-  if state == "accepted" then
+  if marker_state == "accepted" then
     return M.opts.ascii_only and "v" or "\226\156\147"
   end
-  if state == "rejected" then
+  if marker_state == "rejected" then
     return "x"
   end
   return " "
@@ -129,11 +122,13 @@ function M.render(files)
   vim.api.nvim_buf_clear_namespace(M.buf, highlights.namespace, 0, -1)
   set_modifiable(false)
 
-  for index, file in ipairs(M.files) do
-    vim.api.nvim_buf_set_extmark(M.buf, highlights.namespace, index - 1, 0, {
-      virt_text = { { " " .. badge(file), "CodexPending" } },
-      virt_text_pos = "eol",
-    })
+  if M.opts.badges ~= false then
+    for index, file in ipairs(M.files) do
+      vim.api.nvim_buf_set_extmark(M.buf, highlights.namespace, index - 1, 0, {
+        virt_text = { { "  ", "Normal" }, { state.badge(file, M.opts), "CodexBadge" } },
+        virt_text_pos = "eol",
+      })
+    end
   end
 end
 

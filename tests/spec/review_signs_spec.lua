@@ -20,6 +20,7 @@ end
 describe("review signs", function()
   before_each(function()
     highlights.setup()
+    panes.configure({ signs = true })
   end)
 
   after_each(function()
@@ -50,6 +51,34 @@ describe("review signs", function()
 
     assert.is_true(saw_delete)
     assert.is_true(saw_add)
+
+    close_win(after_win)
+    close_win(before_win)
+  end)
+
+  it("keeps line highlights but omits sign text when disabled", function()
+    panes.configure({ signs = false })
+    local parsed = parse.parse(patch)
+    vim.cmd("vnew")
+    local before_win = vim.api.nvim_get_current_win()
+    vim.cmd("vnew")
+    local after_win = vim.api.nvim_get_current_win()
+
+    panes.attach(before_win, after_win)
+    panes.show(parsed.files[1])
+    local before_buf = panes.buffers()
+    local before_marks = vim.api.nvim_buf_get_extmarks(before_buf, highlights.namespace, 0, -1, { details = true })
+
+    local saw_delete_line = false
+    local saw_sign = false
+    for _, mark in ipairs(before_marks) do
+      local details = mark[4] or {}
+      saw_delete_line = saw_delete_line or details.line_hl_group == "CodexDelete"
+      saw_sign = saw_sign or details.sign_text ~= nil
+    end
+
+    assert.is_true(saw_delete_line)
+    assert.is_false(saw_sign)
 
     close_win(after_win)
     close_win(before_win)
