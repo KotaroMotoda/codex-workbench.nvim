@@ -70,8 +70,8 @@ local function display_path(file)
 end
 
 local function state_marker(file)
-  local state = file.state
-  if not state and #(file.hunks or {}) > 0 then
+  local marker_state = file.state
+  if not marker_state and #(file.hunks or {}) > 0 then
     local accepted = 0
     local rejected = 0
     for _, hunk in ipairs(file.hunks) do
@@ -82,15 +82,15 @@ local function state_marker(file)
       end
     end
     if accepted == #file.hunks then
-      state = "accepted"
+      marker_state = "accepted"
     elseif rejected == #file.hunks then
-      state = "rejected"
+      marker_state = "rejected"
     end
   end
-  if state == "accepted" then
+  if marker_state == "accepted" then
     return M.opts.ascii_only and "v" or "\226\156\147"
   end
-  if state == "rejected" then
+  if marker_state == "rejected" then
     return "x"
   end
   return " "

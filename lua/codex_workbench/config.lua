@@ -66,7 +66,6 @@ M.defaults = {
       winbar = true,
       signs = true,
       badges = true,
-      ascii_only = false,
     },
     progress = {
       enabled = true,
